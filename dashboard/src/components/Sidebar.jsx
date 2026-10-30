@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home, User, Clock, Wallet, HelpCircle, LogOut, Flower2 } from 'lucide-react';
+import { Home, User, Clock, Wallet, HelpCircle, LogOut } from 'lucide-react';
 
 const menuItems = [
   { id: 'beranda', label: 'Beranda', icon: Home },
@@ -8,16 +8,18 @@ const menuItems = [
   { id: 'gaji', label: 'Gaji & Manfaat', icon: Wallet },
 ];
 
-export default function Sidebar({ activeMenu, setActiveMenu, isDark }) {
+export default function Sidebar({ activeMenu, setActiveMenu, isDark, onLogout }) {
   return (
     <aside className={`flex flex-col justify-between h-screen sticky top-0 w-[272px] min-w-[272px] border-r transition-colors duration-300 ${isDark ? 'bg-[#0F172A] border-slate-800' : 'bg-white border-slate-200'}`}>
       {/* ── Bagian Atas ── */}
       <div>
         {/* Logo */}
         <div className="px-5 pt-6 pb-4 flex items-center gap-3">
-          <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center shadow-md shadow-primary/20">
-            <Flower2 size={22} className="text-white" />
-          </div>
+          <img
+            src="/assets/logo.jpg"
+            alt="Blue Rose Tech"
+            className="w-10 h-10 rounded-xl object-cover shadow-md shadow-primary/20"
+          />
           <div>
             <h1 className={`font-headline font-bold text-[15px] leading-tight ${isDark ? 'text-white' : 'text-neutral'}`}>
               Blue Rose Tech
@@ -63,7 +65,10 @@ export default function Sidebar({ activeMenu, setActiveMenu, isDark }) {
           <HelpCircle size={19} strokeWidth={1.8} />
           Bantuan &amp; Dukungan
         </button>
-        <button className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-150 ${isDark ? 'text-red-400 hover:bg-red-950/30' : 'text-red-500 hover:bg-red-50'}`}>
+        <button
+          onClick={onLogout}
+          className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-150 ${isDark ? 'text-red-400 hover:bg-red-950/30' : 'text-red-500 hover:bg-red-50'}`}
+        >
           <LogOut size={19} strokeWidth={1.8} />
           Keluar
         </button>

@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import LoginPage from './components/LoginPage';
+import ResetPasswordPage from './components/ResetPasswordPage';
 import Sidebar from './components/Sidebar';
 import TopHeader from './components/TopHeader';
 import WelcomeBanner from './components/WelcomeBanner';
@@ -6,14 +8,41 @@ import AttendanceCard from './components/AttendanceCard';
 import LeaveQuotaCard from './components/LeaveQuotaCard';
 import SalaryCard from './components/SalaryCard';
 import BenefitsCard from './components/BenefitsCard';
+import './auth.css';
 
 export default function App() {
+  const [currentPage, setCurrentPage] = useState('login');
   const [activeMenu, setActiveMenu] = useState('beranda');
   const [isDark, setIsDark] = useState(false);
 
+  /* ── Login & Reset ── */
+  if (currentPage === 'login') {
+    return (
+      <LoginPage
+        onLogin={() => { setActiveMenu('beranda'); setCurrentPage('dashboard'); }}
+        onForgotPassword={() => setCurrentPage('reset')}
+      />
+    );
+  }
+
+  if (currentPage === 'reset') {
+    return (
+      <ResetPasswordPage
+        onReset={() => setCurrentPage('login')}
+        onBackToLogin={() => setCurrentPage('login')}
+      />
+    );
+  }
+
+  /* ── Dashboard ── */
   return (
     <div className={`flex min-h-screen font-body transition-colors duration-300 ${isDark ? 'bg-[#0B1120] text-slate-100' : 'bg-slate-50 text-[#0F172A]'}`}>
-      <Sidebar activeMenu={activeMenu} setActiveMenu={setActiveMenu} isDark={isDark} />
+      <Sidebar
+        activeMenu={activeMenu}
+        setActiveMenu={setActiveMenu}
+        isDark={isDark}
+        onLogout={() => setCurrentPage('login')}
+      />
 
       <div className="flex-1 flex flex-col min-h-screen overflow-hidden">
         <TopHeader isDark={isDark} setIsDark={setIsDark} />
