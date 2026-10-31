@@ -1,13 +1,13 @@
 import React from 'react';
 import { ShieldCheck } from 'lucide-react';
 
-export default function WelcomeBanner({ isDark }) {
+export default function WelcomeBanner({ isDark, userName }) {
   return (
     <div className={`rounded-2xl border p-6 flex items-center justify-between gap-6 transition-colors duration-300 ${isDark ? 'bg-[#0F172A] border-slate-800' : 'bg-white border-slate-200'}`}>
       {/* Kiri */}
       <div>
         <h2 className={`text-[22px] font-headline font-bold leading-tight ${isDark ? 'text-white' : 'text-neutral'}`}>
-          👋 Selamat Pagi, Raditya Pratama
+          👋 Selamat Pagi, {userName || 'Raditya Pratama'}
         </h2>
         <p className={`text-sm mt-1.5 leading-relaxed ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
           Senin, 24 Februari 2026 • Semangat memulai minggu kerja Anda dengan produktif dan terencana.

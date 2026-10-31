@@ -1,7 +1,14 @@
 import React from 'react';
-import { Search, Calendar, Bell, Sun, Moon } from 'lucide-react';
+import { Search, Calendar, Bell, Sun, Moon, User } from 'lucide-react';
 
-export default function TopHeader({ isDark, setIsDark }) {
+export default function TopHeader({ isDark, setIsDark, profilePhoto, userName }) {
+  const initials = (userName || 'RP')
+    .split(' ')
+    .map((w) => w[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+
   return (
     <header className={`px-6 py-3.5 flex items-center justify-between gap-6 transition-colors duration-300 border-b ${isDark ? 'bg-[#0F172A] border-slate-800' : 'bg-white border-slate-200'}`}>
       {/* Kiri — Pencarian */}
@@ -55,7 +62,7 @@ export default function TopHeader({ isDark, setIsDark }) {
           <div className="text-right">
             <div className="flex items-center gap-2 justify-end">
               <p className={`text-sm font-semibold leading-tight ${isDark ? 'text-white' : 'text-neutral'}`}>
-                Raditya Pratama
+                {userName || 'Raditya Pratama'}
               </p>
               <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] text-tertiary font-semibold ${isDark ? 'bg-emerald-950/50' : 'bg-emerald-50'}`}>
                 <span className="w-1.5 h-1.5 bg-tertiary rounded-full animate-pulse" />
@@ -66,8 +73,13 @@ export default function TopHeader({ isDark, setIsDark }) {
               Divisi: Teknologi Informasi | Jabatan: Frontend Developer
             </p>
           </div>
-          <div className={`w-10 h-10 rounded-full bg-gradient-to-br from-secondary to-primary flex items-center justify-center text-white font-headline font-bold text-sm shadow-md shadow-secondary/20 ring-2 ${isDark ? 'ring-slate-800' : 'ring-white'}`}>
-            RP
+          {/* Avatar — sinkron dengan ProfilePage */}
+          <div className={`w-10 h-10 rounded-full flex items-center justify-center overflow-hidden shadow-md ring-2 ${isDark ? 'ring-slate-800' : 'ring-white'} ${!profilePhoto ? 'bg-gradient-to-br from-secondary to-primary' : ''}`}>
+            {profilePhoto ? (
+              <img src={profilePhoto} alt="Foto Profil" className="w-full h-full object-cover" />
+            ) : (
+              <User size={20} className="text-white/90" strokeWidth={1.5} />
+            )}
           </div>
         </div>
       </div>
