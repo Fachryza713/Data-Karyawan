@@ -9,6 +9,7 @@ import LeaveQuotaCard from './components/LeaveQuotaCard';
 import SalaryCard from './components/SalaryCard';
 import BenefitsCard from './components/BenefitsCard';
 import ProfilePage from './components/ProfilePage';
+import AttendancePage from './components/AttendancePage';
 import './auth.css';
 
 export default function App() {
@@ -56,6 +57,8 @@ export default function App() {
               userName={userName}
               setUserName={setUserName}
             />
+          ) : activeMenu === 'kehadiran' ? (
+            <AttendancePage isDark={isDark} />
           ) : (
             <>
               <WelcomeBanner isDark={isDark} userName={userName} />
