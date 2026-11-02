@@ -11,7 +11,7 @@ import {
   BadgeCheck,
 } from 'lucide-react';
 
-const benefitsData = [
+export const benefitsData = [
   {
     id: 'bpjs-kesehatan',
     title: 'BPJS Kesehatan Perusahaan',
@@ -64,7 +64,7 @@ const benefitsData = [
   },
 ];
 
-function BenefitModal({ benefit, onClose, isDark }) {
+export function BenefitModal({ benefit, onClose, isDark }) {
   const Icon = benefit.icon;
 
   const handleKeyDown = useCallback(

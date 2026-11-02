@@ -10,6 +10,7 @@ import SalaryCard from './components/SalaryCard';
 import BenefitsCard from './components/BenefitsCard';
 import ProfilePage from './components/ProfilePage';
 import AttendancePage from './components/AttendancePage';
+import SalaryPage from './components/SalaryPage';
 import './auth.css';
 
 export default function App() {
@@ -59,6 +60,8 @@ export default function App() {
             />
           ) : activeMenu === 'kehadiran' ? (
             <AttendancePage isDark={isDark} />
+          ) : activeMenu === 'gaji' ? (
+            <SalaryPage isDark={isDark} />
           ) : (
             <>
               <WelcomeBanner isDark={isDark} userName={userName} />
