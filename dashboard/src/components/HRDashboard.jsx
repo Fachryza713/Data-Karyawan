@@ -4,6 +4,7 @@ import {
   Calendar, Bell, ShieldCheck, Download, Plus, CalendarDays, Radar, ArrowRight,
   CheckCircle2, AlertTriangle, ImagePlus, Construction,
 } from 'lucide-react';
+import HRAttendancePage from './HRAttendancePage';
 
 const hrMenu = [
   { id: 'beranda', label: 'Beranda HR', icon: Home },
@@ -387,6 +388,8 @@ export default function HRDashboard({ onLogout }) {
         <main className="flex-1 p-6">
           {activeHrTab === 'beranda' ? (
             <HRHome isDark={isDark} go={setActiveHrTab} />
+          ) : activeHrTab === 'kehadiran' ? (
+            <HRAttendancePage isDark={isDark} />
           ) : (
             <HRPlaceholder isDark={isDark} label={current.label} go={setActiveHrTab} />
           )}
