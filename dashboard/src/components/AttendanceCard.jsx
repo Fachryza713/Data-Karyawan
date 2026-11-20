@@ -1,7 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { Clock, ChevronRight, Fingerprint } from 'lucide-react';
+import { ArrowRight, MapPin } from 'lucide-react';
+import { Card, Badge, Button, Eyebrow, cx } from './ui';
 
-export default function AttendanceCard({ setActiveMenu, isDark }) {
+const MONTH_STATS = [
+  { label: 'Hadir', value: 19 },
+  { label: 'Terlambat', value: 1, tone: 'text-warning' },
+  { label: 'Cuti', value: 1 },
+  { label: 'Hari kerja tersisa', value: 3 },
+];
+
+export default function AttendanceCard({ setActiveMenu, className }) {
   const [now, setNow] = useState(new Date());
 
   useEffect(() => {
@@ -9,98 +17,59 @@ export default function AttendanceCard({ setActiveMenu, isDark }) {
     return () => clearInterval(id);
   }, []);
 
-  const timeStr = now.toLocaleTimeString('id-ID', {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-  });
-
-  const goToKehadiran = () => setActiveMenu('kehadiran');
+  const time = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', hour12: false });
 
   return (
-    <div className={`rounded-2xl border flex flex-col transition-colors duration-300 ${isDark ? 'bg-[#0F172A] border-slate-800' : 'bg-white border-slate-200'}`}>
-      {/* Header */}
-      <div className={`px-5 py-4 flex items-center justify-between border-b ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
-        <div className="flex items-center gap-2">
-          <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isDark ? 'bg-blue-950/50' : 'bg-blue-50'}`}>
-            <Clock size={17} className={isDark ? 'text-blue-400' : 'text-secondary'} />
-          </div>
-          <h3 className={`font-headline font-semibold text-sm ${isDark ? 'text-white' : 'text-neutral'}`}>
-            Status &amp; Notifikasi Kehadiran
-          </h3>
-        </div>
-
-        {/* Badge jam digital */}
-        <div className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 border ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-blue-50/90 border-blue-100'}`}>
-          <span className="w-1.5 h-1.5 bg-tertiary rounded-full animate-pulse" />
-          <span className={`text-xs font-mono font-semibold tracking-wide ${isDark ? 'text-blue-100' : 'text-[#1E3A8A]'}`}>
-            {timeStr} WIB
-          </span>
-          <span className={`text-[10px] ml-0.5 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>• Head Office Jakarta</span>
-        </div>
-      </div>
-
-      {/* Konten — 2 kotak notifikasi */}
-      <div className="p-5 flex-1 space-y-3">
-        {/* Kotak Hijau */}
-        <button
-          onClick={goToKehadiran}
-          className={`w-full text-left p-4 rounded-xl transition-all duration-150 group cursor-pointer border ${
-            isDark
-              ? 'bg-emerald-950/40 border-emerald-800/60 hover:bg-emerald-950/60 hover:border-emerald-700'
-              : 'bg-emerald-50/70 border-emerald-200/80 hover:bg-emerald-50 hover:border-emerald-300'
-          }`}
-        >
-          <div className="flex items-center justify-between mb-2">
-            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-tertiary text-[11px] font-bold rounded-full tracking-wide ${isDark ? 'bg-tertiary/20' : 'bg-tertiary/10'}`}>
-              Hari Ini • Shift Pagi
-            </span>
-            <ChevronRight size={16} className="text-emerald-400 group-hover:translate-x-0.5 transition-transform" />
-          </div>
-          <p className={`text-[13px] leading-relaxed ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
-            Presensi Masuk tercatat pukul{' '}
-            <span className={`font-semibold ${isDark ? 'text-white' : 'text-neutral'}`}>08:15 WIB</span>{' '}
-            <span className="text-tertiary font-medium">(Tepat Waktu)</span>. Klik di sini untuk melakukan{' '}
-            <span className="text-tertiary font-semibold">Presensi Pulang</span> di halaman Kehadiran &amp; Cuti →
+    <Card className={cx('flex flex-col', className)}>
+      <div className="flex flex-wrap items-start justify-between gap-4 px-5 pt-5">
+        <div>
+          <Eyebrow>Kehadiran hari ini</Eyebrow>
+          <p className="num mt-1 font-display text-3xl font-semibold tracking-tight">
+            {time} <span className="text-base font-medium text-faint">WIB</span>
           </p>
-        </button>
-
-        {/* Kotak Biru */}
-        <button
-          onClick={goToKehadiran}
-          className={`w-full text-left p-4 rounded-xl transition-all duration-150 group cursor-pointer border ${
-            isDark
-              ? 'bg-blue-950/40 border-blue-800/60 hover:bg-blue-950/60 hover:border-blue-700'
-              : 'bg-blue-50/70 border-blue-200/80 hover:bg-blue-50 hover:border-blue-300'
-          }`}
-        >
-          <div className="flex items-center justify-between mb-2">
-            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-bold rounded-full tracking-wide ${isDark ? 'bg-blue-500/20 text-blue-300' : 'bg-secondary/10 text-secondary'}`}>
-              Ringkasan Kehadiran
-            </span>
-            <ChevronRight size={16} className="text-blue-400 group-hover:translate-x-0.5 transition-transform" />
-          </div>
-          <p className={`text-[13px] leading-relaxed ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
-            Rekap bulan berjalan:{' '}
-            <span className={`font-semibold ${isDark ? 'text-white' : 'text-neutral'}`}>19 Hadir</span>,{' '}
-            <span className={`font-semibold ${isDark ? 'text-amber-400' : 'text-amber-600'}`}>1 Terlambat</span>,{' '}
-            <span className={`font-semibold ${isDark ? 'text-blue-300' : 'text-secondary'}`}>1 Cuti</span>. Klik untuk melihat
-            tabel log kehadiran lengkap →
+          <p className="mt-1 flex items-center gap-1.5 text-[13px] text-muted">
+            <MapPin size={14} aria-hidden="true" /> Head Office Jakarta · Shift 08:30–17:30
           </p>
-        </button>
+        </div>
+        <Button onClick={() => setActiveMenu('kehadiran')}>
+          Absen pulang <ArrowRight size={16} aria-hidden="true" />
+        </Button>
       </div>
 
-      {/* Footer */}
-      <div className={`px-5 py-3 border-t flex items-center justify-between ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
-        <span className="flex items-center gap-1.5 text-[11px] text-slate-400">
-          <Fingerprint size={13} />
-          Sinkronisasi otomatis GPS &amp; Biometrik
-        </span>
-        <button className={`text-[11px] font-semibold hover:underline ${isDark ? 'text-blue-400' : 'text-secondary'}`}>
-          Buka Pengaturan Presensi ↗
-        </button>
+      <dl className="mx-5 mt-5 grid grid-cols-2 overflow-hidden rounded-lg border border-line">
+        <div className="border-r border-line px-4 py-3">
+          <dt className="text-xs text-faint">Masuk</dt>
+          <dd className="mt-0.5 flex items-center gap-2">
+            <span className="num text-base font-semibold">08:15</span>
+            <Badge tone="success">Tepat waktu</Badge>
+          </dd>
+        </div>
+        <div className="px-4 py-3">
+          <dt className="text-xs text-faint">Pulang</dt>
+          <dd className="mt-0.5 text-base font-semibold text-faint">Belum tercatat</dd>
+        </div>
+      </dl>
+
+      <div className="mt-auto px-5 pb-5 pt-5">
+        <div className="mb-2 flex items-center justify-between">
+          <Eyebrow>Februari 2026</Eyebrow>
+          <button
+            type="button"
+            onClick={() => setActiveMenu('kehadiran')}
+            className="text-[13px] font-medium text-accent-text hover:underline"
+          >
+            Lihat log
+          </button>
+        </div>
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4">
+          {MONTH_STATS.map((s) => (
+            <div key={s.label}>
+              <dt className="text-xs text-faint">{s.label}</dt>
+              <dd className={cx('num text-lg font-semibold', s.tone)}>{s.value}</dd>
+            </div>
+          ))}
+        </dl>
       </div>
-    </div>
+    </Card>
   );
 }
