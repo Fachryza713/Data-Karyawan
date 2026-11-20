@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Home, User, Clock, Wallet } from 'lucide-react';
 import LoginPage from './components/LoginPage';
 import ResetPasswordPage from './components/ResetPasswordPage';
 import Sidebar from './components/Sidebar';
@@ -11,22 +12,28 @@ import BenefitsCard from './components/BenefitsCard';
 import ProfilePage from './components/ProfilePage';
 import AttendancePage from './components/AttendancePage';
 import SalaryPage from './components/SalaryPage';
-import './auth.css';
+import { useTheme } from './components/ui';
+
+const MENU = [
+  { id: 'beranda', label: 'Beranda', icon: Home },
+  { id: 'profil', label: 'Profil', icon: User },
+  { id: 'kehadiran', label: 'Kehadiran & Cuti', icon: Clock },
+  { id: 'gaji', label: 'Gaji & Manfaat', icon: Wallet },
+];
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState('login');
   const [activeMenu, setActiveMenu] = useState('beranda');
-  const [isDark, setIsDark] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const { isDark, toggle } = useTheme();
   const [profilePhoto, setProfilePhoto] = useState(null);
   const [userName, setUserName] = useState('Raditya Pratama');
-
-  const toggleTheme = () => setIsDark((prev) => !prev);
 
   if (currentPage === 'login') {
     return (
       <LoginPage
         isDark={isDark}
-        toggleTheme={toggleTheme}
+        toggleTheme={toggle}
         onLogin={() => { setActiveMenu('beranda'); setCurrentPage('dashboard'); }}
         onForgotPassword={() => setCurrentPage('reset')}
       />
@@ -37,7 +44,7 @@ export default function App() {
     return (
       <ResetPasswordPage
         isDark={isDark}
-        toggleTheme={toggleTheme}
+        toggleTheme={toggle}
         onReset={() => setCurrentPage('login')}
         onBackToLogin={() => setCurrentPage('login')}
       />
@@ -45,31 +52,47 @@ export default function App() {
   }
 
   return (
-    <div className={`flex min-h-screen font-body transition-colors duration-300 ${isDark ? 'bg-[#0B1120] text-slate-100' : 'bg-slate-50 text-[#0F172A]'}`}>
-      <Sidebar activeMenu={activeMenu} setActiveMenu={setActiveMenu} isDark={isDark} onLogout={() => setCurrentPage('login')} />
-      <div className="flex-1 flex flex-col min-h-screen overflow-hidden">
-        <TopHeader isDark={isDark} setIsDark={setIsDark} profilePhoto={profilePhoto} userName={userName} />
-        <main className="flex-1 p-6 overflow-y-auto">
+    <div className="flex min-h-screen bg-canvas text-fg">
+      <Sidebar
+        items={MENU}
+        active={activeMenu}
+        onSelect={setActiveMenu}
+        subtitle="Portal Karyawan"
+        onLogout={() => setCurrentPage('login')}
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
+      />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <TopHeader
+          isDark={isDark}
+          onToggleTheme={toggle}
+          onOpenMenu={() => setMenuOpen(true)}
+          userName={userName}
+          userRole="Frontend Developer · Teknologi Informasi"
+          profilePhoto={profilePhoto}
+          searchPlaceholder="Cari kebijakan, formulir, dokumen"
+          notifCount={2}
+        />
+        <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6 lg:py-8">
           {activeMenu === 'profil' ? (
             <ProfilePage
-              isDark={isDark}
               profilePhoto={profilePhoto}
               setProfilePhoto={setProfilePhoto}
               userName={userName}
               setUserName={setUserName}
             />
           ) : activeMenu === 'kehadiran' ? (
-            <AttendancePage isDark={isDark} />
+            <AttendancePage />
           ) : activeMenu === 'gaji' ? (
-            <SalaryPage isDark={isDark} />
+            <SalaryPage />
           ) : (
             <>
-              <WelcomeBanner isDark={isDark} userName={userName} />
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
-                <AttendanceCard setActiveMenu={setActiveMenu} isDark={isDark} />
-                <LeaveQuotaCard setActiveMenu={setActiveMenu} isDark={isDark} />
-                <SalaryCard setActiveMenu={setActiveMenu} isDark={isDark} />
-                <BenefitsCard isDark={isDark} />
+              <WelcomeBanner userName={userName} />
+              <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+                <AttendanceCard setActiveMenu={setActiveMenu} className="lg:col-span-2" />
+                <LeaveQuotaCard setActiveMenu={setActiveMenu} />
+                <SalaryCard setActiveMenu={setActiveMenu} />
+                <BenefitsCard className="lg:col-span-2" />
               </div>
             </>
           )}

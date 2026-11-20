@@ -1,86 +1,43 @@
 import React from 'react';
-import { Search, Calendar, Bell, Sun, Moon, User } from 'lucide-react';
+import { Search, Bell, Sun, Moon, Menu } from 'lucide-react';
+import { Avatar, IconButton } from './ui';
 
-export default function TopHeader({ isDark, setIsDark, profilePhoto, userName }) {
-  const initials = (userName || 'RP')
-    .split(' ')
-    .map((w) => w[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase();
-
+/* Header generik: tombol menu (mobile), pencarian, tema, notifikasi, identitas pengguna. */
+export default function TopHeader({ isDark, onToggleTheme, onOpenMenu, userName, userRole, profilePhoto, searchPlaceholder, notifCount = 0 }) {
   return (
-    <header className={`px-6 py-3.5 flex items-center justify-between gap-6 transition-colors duration-300 border-b ${isDark ? 'bg-[#0F172A] border-slate-800' : 'bg-white border-slate-200'}`}>
-      {/* Kiri — Pencarian */}
-      <div className="relative w-full max-w-[420px]">
-        <Search
-          size={17}
-          className={`absolute left-3.5 top-1/2 -translate-y-1/2 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}
-        />
+    <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-line bg-surface px-4 sm:px-6">
+      <IconButton label="Buka menu" onClick={onOpenMenu} className="-ml-1.5 lg:hidden">
+        <Menu size={20} />
+      </IconButton>
+
+      <div className="relative hidden w-full max-w-sm sm:block">
+        <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-faint" aria-hidden="true" />
+        <label htmlFor="global-search" className="sr-only">Cari</label>
         <input
-          type="text"
-          placeholder="Cari kebijakan, formulir cuti, berkas..."
-          className={`w-full pl-10 pr-4 py-2.5 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all ${
-            isDark
-              ? 'bg-slate-800 border border-slate-700 text-slate-200 placeholder:text-slate-500'
-              : 'bg-slate-50 border border-slate-200 text-slate-700 placeholder:text-slate-400'
-          }`}
+          id="global-search"
+          type="search"
+          placeholder={searchPlaceholder}
+          className="h-9 w-full rounded-lg border border-line bg-subtle pl-9 pr-3 text-sm text-fg placeholder:text-faint focus:border-accent focus:bg-surface focus:outline-none focus:ring-2 focus:ring-ring"
         />
       </div>
 
-      {/* Kanan — Ikon & Profil */}
-      <div className="flex items-center gap-3 flex-shrink-0">
-        {/* Toggle Tema */}
-        <button
-          onClick={() => setIsDark((prev) => !prev)}
-          className={`p-2 rounded-lg transition-colors duration-200 ${isDark ? 'hover:bg-slate-800 text-blue-300' : 'hover:bg-slate-100 text-amber-500'}`}
-          title={isDark ? 'Beralih ke Tema Terang' : 'Beralih ke Tema Gelap'}
-        >
-          {isDark ? (
-            <Moon size={20} strokeWidth={1.7} />
-          ) : (
-            <Sun size={20} strokeWidth={1.7} />
+      <div className="ml-auto flex items-center gap-1">
+        <IconButton label={isDark ? 'Gunakan tema terang' : 'Gunakan tema gelap'} onClick={onToggleTheme}>
+          {isDark ? <Sun size={18} /> : <Moon size={18} />}
+        </IconButton>
+        <IconButton label={notifCount ? `Notifikasi, ${notifCount} belum dibaca` : 'Notifikasi'}>
+          <Bell size={18} />
+          {notifCount > 0 && (
+            <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-danger-solid ring-2 ring-surface" aria-hidden="true" />
           )}
-        </button>
+        </IconButton>
 
-        {/* Kalender */}
-        <button className={`p-2 rounded-lg transition-colors ${isDark ? 'text-slate-400 hover:bg-slate-800 hover:text-slate-300' : 'text-slate-400 hover:bg-slate-100 hover:text-slate-600'}`}>
-          <Calendar size={20} strokeWidth={1.7} />
-        </button>
-
-        {/* Notifikasi */}
-        <button className={`relative p-2 rounded-lg transition-colors ${isDark ? 'text-slate-400 hover:bg-slate-800 hover:text-slate-300' : 'text-slate-400 hover:bg-slate-100 hover:text-slate-600'}`}>
-          <Bell size={20} strokeWidth={1.7} />
-          <span className={`absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full ring-2 ${isDark ? 'ring-[#0F172A]' : 'ring-white'}`} />
-        </button>
-
-        {/* Pemisah vertikal */}
-        <div className={`w-px h-9 mx-1 ${isDark ? 'bg-slate-700' : 'bg-slate-200'}`} />
-
-        {/* Profil */}
-        <div className="flex items-center gap-3">
-          <div className="text-right">
-            <div className="flex items-center gap-2 justify-end">
-              <p className={`text-sm font-semibold leading-tight ${isDark ? 'text-white' : 'text-neutral'}`}>
-                {userName || 'Raditya Pratama'}
-              </p>
-              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] text-tertiary font-semibold ${isDark ? 'bg-emerald-950/50' : 'bg-emerald-50'}`}>
-                <span className="w-1.5 h-1.5 bg-tertiary rounded-full animate-pulse" />
-                Di Kantor
-              </span>
-            </div>
-            <p className="text-[11px] text-slate-400 mt-0.5">
-              Divisi: Teknologi Informasi | Jabatan: Frontend Developer
-            </p>
+        <div className="ml-2 flex items-center gap-3 border-l border-line pl-3">
+          <div className="hidden text-right leading-tight md:block">
+            <p className="text-sm font-medium">{userName}</p>
+            <p className="text-xs text-faint">{userRole}</p>
           </div>
-          {/* Avatar — sinkron dengan ProfilePage */}
-          <div className={`w-10 h-10 rounded-full flex items-center justify-center overflow-hidden shadow-md ring-2 ${isDark ? 'ring-slate-800' : 'ring-white'} ${!profilePhoto ? 'bg-gradient-to-br from-secondary to-primary' : ''}`}>
-            {profilePhoto ? (
-              <img src={profilePhoto} alt="Foto Profil" className="w-full h-full object-cover" />
-            ) : (
-              <User size={20} className="text-white/90" strokeWidth={1.5} />
-            )}
-          </div>
+          <Avatar name={userName} src={profilePhoto} size={34} />
         </div>
       </div>
     </header>

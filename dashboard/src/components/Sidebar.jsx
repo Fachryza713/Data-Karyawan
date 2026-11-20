@@ -1,78 +1,94 @@
-import React from 'react';
-import { Home, User, Clock, Wallet, HelpCircle, LogOut } from 'lucide-react';
+import React, { useEffect } from 'react';
+import { LifeBuoy, LogOut, X } from 'lucide-react';
+import { cx, IconButton } from './ui';
 
-const menuItems = [
-  { id: 'beranda', label: 'Beranda', icon: Home },
-  { id: 'profil', label: 'Profil & Identitas', icon: User },
-  { id: 'kehadiran', label: 'Kehadiran & Cuti', icon: Clock },
-  { id: 'gaji', label: 'Gaji & Manfaat', icon: Wallet },
-];
+/*
+ * Sidebar generik untuk portal karyawan & HR.
+ * Desktop (lg+): menempel di kiri. Mobile: drawer yang dibuka dari header.
+ */
+export default function Sidebar({ items, active, onSelect, subtitle, onLogout, open, onClose, extra }) {
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
 
-export default function Sidebar({ activeMenu, setActiveMenu, isDark, onLogout }) {
+  const select = (id) => {
+    onSelect(id);
+    onClose?.();
+  };
+
   return (
-    <aside className={`flex flex-col justify-between h-screen sticky top-0 w-[272px] min-w-[272px] border-r transition-colors duration-300 ${isDark ? 'bg-[#0F172A] border-slate-800' : 'bg-white border-slate-200'}`}>
-      {/* ── Bagian Atas ── */}
-      <div>
-        {/* Logo */}
-        <div className="px-5 pt-6 pb-4 flex items-center gap-3">
-          <img
-            src="/assets/logo.jpg"
-            alt="Blue Rose Tech"
-            className="w-10 h-10 rounded-xl object-cover shadow-md shadow-primary/20"
-          />
-          <div>
-            <h1 className={`font-headline font-bold text-[15px] leading-tight ${isDark ? 'text-white' : 'text-neutral'}`}>
-              Blue Rose Tech
-            </h1>
-            <p className="text-[11px] text-slate-400 font-medium">Portal Karyawan Mandiri</p>
+    <>
+      {open && (
+        <div className="fixed inset-0 z-30 animate-fade-in bg-black/40 lg:hidden" onClick={onClose} aria-hidden="true" />
+      )}
+      <aside
+        className={cx(
+          'fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-line bg-surface transition-transform duration-200',
+          'lg:sticky lg:top-0 lg:h-screen lg:translate-x-0',
+          open ? 'translate-x-0' : '-translate-x-full',
+        )}
+        aria-label="Navigasi utama"
+      >
+        <div className="flex h-16 items-center gap-3 px-5">
+          <img src="/assets/logo.jpg" alt="" className="h-8 w-8 rounded-lg object-cover" />
+          <div className="min-w-0 leading-tight">
+            <p className="font-display text-[15px] font-semibold">Blue Rose Tech</p>
+            <p className="truncate text-xs text-faint">{subtitle}</p>
           </div>
+          <IconButton label="Tutup menu" onClick={onClose} className="ml-auto lg:hidden">
+            <X size={18} />
+          </IconButton>
         </div>
 
-        {/* Navigasi */}
-        <nav className="px-3 mt-1 space-y-0.5">
-          {menuItems.map((item) => {
+        <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-2">
+          {items.map((item) => {
             const Icon = item.icon;
-            const isActive = activeMenu === item.id;
-
-            let btnClass;
-            if (isActive) {
-              btnClass = isDark
-                ? 'bg-blue-950/50 text-blue-300 font-semibold shadow-sm'
-                : 'bg-[#EFF6FF] text-primary font-semibold shadow-sm';
-            } else {
-              btnClass = isDark
-                ? 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
-                : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700';
-            }
-
+            const isActive = active === item.id;
             return (
               <button
                 key={item.id}
-                onClick={() => setActiveMenu(item.id)}
-                className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-150 ${btnClass}`}
+                type="button"
+                onClick={() => select(item.id)}
+                aria-current={isActive ? 'page' : undefined}
+                className={cx(
+                  'flex h-9 w-full items-center gap-3 rounded-lg px-3 text-sm transition-colors',
+                  isActive
+                    ? 'bg-accent-soft font-medium text-accent-text'
+                    : 'text-muted hover:bg-subtle hover:text-fg',
+                )}
               >
-                <Icon size={19} strokeWidth={isActive ? 2.2 : 1.8} />
-                {item.label}
+                <Icon size={18} strokeWidth={isActive ? 2.1 : 1.8} aria-hidden="true" />
+                <span className="truncate">{item.label}</span>
+                {item.count != null && (
+                  <span className="num ml-auto rounded-md bg-subtle px-1.5 text-xs font-medium text-muted">{item.count}</span>
+                )}
               </button>
             );
           })}
         </nav>
-      </div>
 
-      {/* ── Bagian Bawah ── */}
-      <div className={`mt-auto border-t p-3 ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
-        <button className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-150 ${isDark ? 'text-slate-400 hover:bg-slate-800 hover:text-slate-200' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'}`}>
-          <HelpCircle size={19} strokeWidth={1.8} />
-          Bantuan &amp; Dukungan
-        </button>
-        <button
-          onClick={onLogout}
-          className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-150 ${isDark ? 'text-red-400 hover:bg-red-950/30' : 'text-red-500 hover:bg-red-50'}`}
-        >
-          <LogOut size={19} strokeWidth={1.8} />
-          Keluar
-        </button>
-      </div>
-    </aside>
+        <div className="space-y-0.5 border-t border-line p-3">
+          {extra}
+          <button
+            type="button"
+            className="flex h-9 w-full items-center gap-3 rounded-lg px-3 text-sm text-muted transition-colors hover:bg-subtle hover:text-fg"
+          >
+            <LifeBuoy size={18} strokeWidth={1.8} aria-hidden="true" />
+            Bantuan
+          </button>
+          <button
+            type="button"
+            onClick={onLogout}
+            className="flex h-9 w-full items-center gap-3 rounded-lg px-3 text-sm text-muted transition-colors hover:bg-danger-soft hover:text-danger"
+          >
+            <LogOut size={18} strokeWidth={1.8} aria-hidden="true" />
+            Keluar
+          </button>
+        </div>
+      </aside>
+    </>
   );
 }

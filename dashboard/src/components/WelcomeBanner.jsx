@@ -1,26 +1,23 @@
 import React from 'react';
-import { ShieldCheck } from 'lucide-react';
 
-export default function WelcomeBanner({ isDark, userName }) {
+const greeting = (h) => {
+  if (h < 11) return 'Selamat pagi';
+  if (h < 15) return 'Selamat siang';
+  if (h < 18) return 'Selamat sore';
+  return 'Selamat malam';
+};
+
+/* Sapaan halaman beranda — teks biasa, bukan kartu/banner. */
+export default function WelcomeBanner({ userName = 'Raditya Pratama' }) {
+  const firstName = userName.split(' ')[0];
   return (
-    <div className={`rounded-2xl border p-6 flex items-center justify-between gap-6 transition-colors duration-300 ${isDark ? 'bg-[#0F172A] border-slate-800' : 'bg-white border-slate-200'}`}>
-      {/* Kiri */}
-      <div>
-        <h2 className={`text-[22px] font-headline font-bold leading-tight ${isDark ? 'text-white' : 'text-neutral'}`}>
-          👋 Selamat Pagi, {userName || 'Raditya Pratama'}
-        </h2>
-        <p className={`text-sm mt-1.5 leading-relaxed ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-          Senin, 24 Februari 2026 • Semangat memulai minggu kerja Anda dengan produktif dan terencana.
-        </p>
-      </div>
-
-      {/* Kanan — Badge ID */}
-      <div className={`flex-shrink-0 flex items-center gap-2.5 px-4 py-2.5 rounded-xl border transition-colors duration-300 ${isDark ? 'bg-blue-950/40 border-blue-800/60' : 'bg-blue-50 border-blue-200'}`}>
-        <ShieldCheck size={18} className={isDark ? 'text-blue-400' : 'text-secondary'} strokeWidth={2} />
-        <span className={`text-sm font-semibold whitespace-nowrap ${isDark ? 'text-blue-300' : 'text-primary'}`}>
-          ID Karyawan: BRT-2024-089
-        </span>
-      </div>
+    <div className="mb-6">
+      <h1 className="font-display text-2xl font-semibold tracking-tight">
+        {greeting(new Date().getHours())}, {firstName}
+      </h1>
+      <p className="mt-1 text-sm text-muted">
+        Senin, 24 Februari 2026 <span className="text-faint">·</span> NIP <span className="num">BRT-2023-0884</span>
+      </p>
     </div>
   );
 }
