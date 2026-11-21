@@ -427,3 +427,12 @@ enabled = true
 # formatted with uppercase keywords, indent 2, max width 180, trailing commas,
 # and column/key alignment. Set to "null" to emit raw, unformatted SQL.
 # format_options = "{\"keywordCase\":\"upper\",\"indent\":2,\"maxWidth\":180,\"commaStyle\":\"trailing\"}"
+
+# Edge Functions modul Data karyawan.
+# verify_jwt = false karena JWT diverifikasi di dalam function (auth.getUser + is_hr()),
+# yang juga mendukung JWT signing keys asimetris di project baru.
+[functions.invite-employee]
+verify_jwt = false
+
+[functions.set-employee-active]
+verify_jwt = false
