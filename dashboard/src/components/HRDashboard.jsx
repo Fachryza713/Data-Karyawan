@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import {
   Home, Users, Clock, Wallet, TrendingUp, Settings, Download, Plus, ChevronRight, Construction,
 } from 'lucide-react';
@@ -6,6 +7,7 @@ import HRAttendancePage from './HRAttendancePage';
 import Sidebar from './Sidebar';
 import TopHeader from './TopHeader';
 import { PageHeader, Card, CardHeader, Button, Badge, Eyebrow, cx } from './ui';
+import { useAuth, profileSubtitle } from '../context/AuthContext';
 
 const hrMenu = [
   { id: 'beranda', label: 'Beranda', icon: Home },
@@ -160,10 +162,20 @@ function HRPlaceholder({ label, go }) {
 }
 
 /* ── Root ── */
-export default function HRDashboard({ onLogout, isDark, toggleTheme }) {
-  const [activeHrTab, setActiveHrTab] = useState('beranda');
+/* Portal HR, di-mount pada /hr/*. Menu aktif = segmen URL setelah /hr. */
+export default function HRDashboard({ isDark, toggleTheme }) {
+  const { profile, signOut } = useAuth();
+  const navigate = useNavigate();
+  const { '*': sub = '' } = useParams();
+  const activeHrTab = hrMenu.some((m) => m.id === sub) ? sub : 'beranda';
+  const setActiveHrTab = (id) => navigate(id === 'beranda' ? '/hr' : `/hr/${id}`);
   const [menuOpen, setMenuOpen] = useState(false);
   const current = hrMenu.find((m) => m.id === activeHrTab);
+
+  const handleLogout = async () => {
+    await signOut();
+    navigate('/login', { replace: true });
+  };
 
   return (
     <div className="flex min-h-screen bg-canvas text-fg">
@@ -172,7 +184,7 @@ export default function HRDashboard({ onLogout, isDark, toggleTheme }) {
         active={activeHrTab}
         onSelect={setActiveHrTab}
         subtitle="Portal HR & Admin"
-        onLogout={onLogout}
+        onLogout={handleLogout}
         open={menuOpen}
         onClose={() => setMenuOpen(false)}
         extra={
@@ -190,8 +202,9 @@ export default function HRDashboard({ onLogout, isDark, toggleTheme }) {
           isDark={isDark}
           onToggleTheme={toggleTheme}
           onOpenMenu={() => setMenuOpen(true)}
-          userName="Dian Sastro"
-          userRole="HR Manager · Human Capital"
+          userName={profile.full_name}
+          userRole={profileSubtitle(profile)}
+          profilePhoto={profile.photo_url}
           searchPlaceholder="Cari karyawan, NIP, atau pengajuan"
           notifCount={5}
         />

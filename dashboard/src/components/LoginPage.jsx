@@ -1,6 +1,10 @@
 import React, { useState } from 'react';
-import { Sun, Moon, Eye, EyeOff, Check } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { Sun, Moon, Eye, EyeOff, Check, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
 import { Button, IconButton, Field, inputCls, cx } from './ui';
+import { useAuth, roleHome } from '../context/AuthContext';
+
+export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export const dict = {
   id: {
@@ -8,15 +12,23 @@ export const dict = {
     brandDesc: 'Absensi, pengajuan cuti, dan slip gaji — tanpa formulir kertas.',
     features: ['Absen masuk & pulang berbasis lokasi', 'Ajukan dan pantau cuti', 'Unduh slip gaji bulanan'],
     loginTitle: 'Masuk',
-    loginSub: 'Gunakan NIP dan kata sandi Anda.',
-    nipLabel: 'NIP',
-    nipPh: 'Contoh: 10482910',
+    loginSub: 'Gunakan email kantor dan kata sandi Anda.',
+    emailLabel: 'Email kantor',
+    emailPh: 'nama@bluerose.test',
     pwLabel: 'Kata sandi',
-    rememberMe: 'Ingat saya',
     loginBtn: 'Masuk',
+    loggingIn: 'Memeriksa…',
     forgotPw: 'Lupa kata sandi?',
-    errNip: 'Masukkan NIP Anda.',
+    errEmail: 'Masukkan email kantor Anda.',
+    errEmailFormat: 'Format email tidak valid.',
     errPw: 'Masukkan kata sandi.',
+    authErrors: {
+      invalid: 'Email atau password salah.',
+      rate_limit: 'Terlalu banyak percobaan. Coba lagi dalam beberapa menit.',
+      network: 'Tidak dapat terhubung ke server. Periksa koneksi Anda.',
+      no_profile: 'Akun Anda belum terdaftar sebagai karyawan. Hubungi HR.',
+      inactive: 'Akun Anda sudah dinonaktifkan. Hubungi HR bila ini keliru.',
+    },
     showPw: 'Tampilkan kata sandi',
     hidePw: 'Sembunyikan kata sandi',
     footerCopy: '© 2026 Blue Rose Tech',
@@ -31,15 +43,23 @@ export const dict = {
     brandDesc: 'Attendance, leave requests, and payslips — no paper forms.',
     features: ['Location-based check-in & check-out', 'Request and track leave', 'Download monthly payslips'],
     loginTitle: 'Sign in',
-    loginSub: 'Use your employee ID and password.',
-    nipLabel: 'Employee ID',
-    nipPh: 'e.g. 10482910',
+    loginSub: 'Use your work email and password.',
+    emailLabel: 'Work email',
+    emailPh: 'name@bluerose.test',
     pwLabel: 'Password',
-    rememberMe: 'Remember me',
     loginBtn: 'Sign in',
+    loggingIn: 'Checking…',
     forgotPw: 'Forgot password?',
-    errNip: 'Enter your employee ID.',
+    errEmail: 'Enter your work email.',
+    errEmailFormat: 'Invalid email format.',
     errPw: 'Enter your password.',
+    authErrors: {
+      invalid: 'Incorrect email or password.',
+      rate_limit: 'Too many attempts. Try again in a few minutes.',
+      network: 'Cannot reach the server. Check your connection.',
+      no_profile: 'Your account is not registered as an employee. Contact HR.',
+      inactive: 'Your account has been deactivated. Contact HR if this is a mistake.',
+    },
     showPw: 'Show password',
     hidePw: 'Hide password',
     footerCopy: '© 2026 Blue Rose Tech',
@@ -106,6 +126,26 @@ export function PasswordInput({ id, placeholder, value, onChange, invalid, t, au
 export const FieldError = ({ children }) =>
   children ? <p className="mt-1.5 text-xs text-danger" role="alert">{children}</p> : null;
 
+/* Pesan di atas form: error server atau info sukses. */
+export function FormNotice({ tone = 'danger', children }) {
+  if (!children) return null;
+  const Icon = tone === 'success' ? CheckCircle2 : AlertCircle;
+  return (
+    <div
+      role={tone === 'danger' ? 'alert' : 'status'}
+      className={cx(
+        'flex items-start gap-2.5 rounded-lg px-3.5 py-3 text-sm',
+        tone === 'success' ? 'bg-success-soft text-success' : 'bg-danger-soft text-danger',
+      )}
+    >
+      <Icon size={18} className="mt-px shrink-0" aria-hidden="true" />
+      <span>{children}</span>
+    </div>
+  );
+}
+
+export const Spinner = () => <Loader2 size={16} className="animate-spin" aria-hidden="true" />;
+
 /* ── Kerangka halaman autentikasi (login & reset) ── */
 export function AuthLayout({ t, lang, setLang, isDark, toggleTheme, children }) {
   return (
@@ -149,20 +189,41 @@ export function AuthLayout({ t, lang, setLang, isDark, toggleTheme, children }) 
 }
 
 /* ── Halaman Login ── */
-export default function LoginPage({ isDark, toggleTheme, onLogin, onForgotPassword }) {
+export default function LoginPage({ isDark, toggleTheme }) {
+  const { signIn } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [lang, setLang] = useState('id');
-  const [nip, setNip] = useState('');
+  const [email, setEmail] = useState('');
   const [pw, setPw] = useState('');
   const [errors, setErrors] = useState({});
+  const [authError, setAuthError] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
   const t = dict[lang];
+  const notice = location.state?.notice;
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    if (submitting) return;
     const next = {};
-    if (!nip.trim()) next.nip = t.errNip;
+    const trimmed = email.trim();
+    if (!trimmed) next.email = t.errEmail;
+    else if (!EMAIL_RE.test(trimmed)) next.email = t.errEmailFormat;
     if (!pw) next.pw = t.errPw;
     setErrors(next);
-    if (!Object.keys(next).length) onLogin();
+    setAuthError(null);
+    if (Object.keys(next).length) return;
+
+    setSubmitting(true);
+    const { profile, error } = await signIn(trimmed, pw);
+    setSubmitting(false);
+    if (error) {
+      setAuthError(error);
+      return;
+    }
+    const home = roleHome(profile.role);
+    const from = location.state?.from;
+    navigate(from?.startsWith(home) ? from : home, { replace: true });
   };
 
   return (
@@ -171,26 +232,35 @@ export default function LoginPage({ isDark, toggleTheme, onLogin, onForgotPasswo
       <p className="mt-1.5 text-sm text-muted">{t.loginSub}</p>
 
       <form className="mt-8 space-y-5" onSubmit={handleSubmit} noValidate>
-        <Field label={t.nipLabel} htmlFor="nipLogin">
+        {authError ? (
+          <FormNotice>{t.authErrors[authError] ?? t.authErrors.invalid}</FormNotice>
+        ) : (
+          notice && <FormNotice tone="success">{notice}</FormNotice>
+        )}
+
+        <Field label={t.emailLabel} htmlFor="emailLogin">
           <input
-            id="nipLogin"
-            type="text"
-            inputMode="numeric"
+            id="emailLogin"
+            type="email"
+            inputMode="email"
             autoComplete="username"
-            maxLength={16}
-            placeholder={t.nipPh}
-            value={nip}
-            onChange={(e) => setNip(e.target.value)}
-            aria-invalid={!!errors.nip || undefined}
-            className={cx(inputCls, 'h-11', errors.nip && 'border-danger')}
+            placeholder={t.emailPh}
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            aria-invalid={!!errors.email || undefined}
+            className={cx(inputCls, 'h-11', errors.email && 'border-danger')}
           />
-          <FieldError>{errors.nip}</FieldError>
+          <FieldError>{errors.email}</FieldError>
         </Field>
 
         <div>
           <div className="mb-1.5 flex items-baseline justify-between">
             <label htmlFor="pwLogin" className="text-[13px] font-medium">{t.pwLabel}</label>
-            <button type="button" onClick={onForgotPassword} className="text-[13px] font-medium text-accent-text hover:underline">
+            <button
+              type="button"
+              onClick={() => navigate('/reset-password')}
+              className="text-[13px] font-medium text-accent-text hover:underline"
+            >
               {t.forgotPw}
             </button>
           </div>
@@ -198,12 +268,9 @@ export default function LoginPage({ isDark, toggleTheme, onLogin, onForgotPasswo
           <FieldError>{errors.pw}</FieldError>
         </div>
 
-        <label className="flex w-fit cursor-pointer items-center gap-2 text-sm text-muted">
-          <input type="checkbox" className="h-4 w-4 rounded border-line-strong accent-[var(--accent)]" />
-          {t.rememberMe}
-        </label>
-
-        <Button type="submit" size="lg" className="w-full">{t.loginBtn}</Button>
+        <Button type="submit" size="lg" className="w-full" disabled={submitting} aria-busy={submitting || undefined}>
+          {submitting ? <><Spinner /> {t.loggingIn}</> : t.loginBtn}
+        </Button>
       </form>
     </AuthLayout>
   );

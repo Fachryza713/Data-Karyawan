@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { Home, User, Clock, Wallet } from 'lucide-react';
-import LoginPage from './components/LoginPage';
-import ResetPasswordPage from './components/ResetPasswordPage';
 import Sidebar from './components/Sidebar';
 import TopHeader from './components/TopHeader';
 import WelcomeBanner from './components/WelcomeBanner';
@@ -12,7 +11,7 @@ import BenefitsCard from './components/BenefitsCard';
 import ProfilePage from './components/ProfilePage';
 import AttendancePage from './components/AttendancePage';
 import SalaryPage from './components/SalaryPage';
-import { useTheme } from './components/ui';
+import { useAuth, profileSubtitle } from './context/AuthContext';
 
 const MENU = [
   { id: 'beranda', label: 'Beranda', icon: Home },
@@ -21,35 +20,22 @@ const MENU = [
   { id: 'gaji', label: 'Gaji & Manfaat', icon: Wallet },
 ];
 
-export default function App() {
-  const [currentPage, setCurrentPage] = useState('login');
-  const [activeMenu, setActiveMenu] = useState('beranda');
+/* Portal karyawan, di-mount pada /app/*. Menu aktif = segmen URL setelah /app. */
+export default function EmployeePortal({ isDark, toggleTheme }) {
+  const { profile, signOut } = useAuth();
+  const navigate = useNavigate();
+  const { '*': sub = '' } = useParams();
+  const activeMenu = MENU.some((m) => m.id === sub) ? sub : 'beranda';
+  const setActiveMenu = (id) => navigate(id === 'beranda' ? '/app' : `/app/${id}`);
   const [menuOpen, setMenuOpen] = useState(false);
-  const { isDark, toggle } = useTheme();
-  const [profilePhoto, setProfilePhoto] = useState(null);
-  const [userName, setUserName] = useState('Raditya Pratama');
+  // Nilai awal dari profil asli. Penyimpanan perubahan profil dikerjakan di modul Profil.
+  const [profilePhoto, setProfilePhoto] = useState(profile.photo_url);
+  const [userName, setUserName] = useState(profile.full_name);
 
-  if (currentPage === 'login') {
-    return (
-      <LoginPage
-        isDark={isDark}
-        toggleTheme={toggle}
-        onLogin={() => { setActiveMenu('beranda'); setCurrentPage('dashboard'); }}
-        onForgotPassword={() => setCurrentPage('reset')}
-      />
-    );
-  }
-
-  if (currentPage === 'reset') {
-    return (
-      <ResetPasswordPage
-        isDark={isDark}
-        toggleTheme={toggle}
-        onReset={() => setCurrentPage('login')}
-        onBackToLogin={() => setCurrentPage('login')}
-      />
-    );
-  }
+  const handleLogout = async () => {
+    await signOut();
+    navigate('/login', { replace: true });
+  };
 
   return (
     <div className="flex min-h-screen bg-canvas text-fg">
@@ -58,17 +44,17 @@ export default function App() {
         active={activeMenu}
         onSelect={setActiveMenu}
         subtitle="Portal Karyawan"
-        onLogout={() => setCurrentPage('login')}
+        onLogout={handleLogout}
         open={menuOpen}
         onClose={() => setMenuOpen(false)}
       />
       <div className="flex min-w-0 flex-1 flex-col">
         <TopHeader
           isDark={isDark}
-          onToggleTheme={toggle}
+          onToggleTheme={toggleTheme}
           onOpenMenu={() => setMenuOpen(true)}
           userName={userName}
-          userRole="Frontend Developer · Teknologi Informasi"
+          userRole={profileSubtitle(profile)}
           profilePhoto={profilePhoto}
           searchPlaceholder="Cari kebijakan, formulir, dokumen"
           notifCount={2}

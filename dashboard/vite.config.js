@@ -1,15 +1,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import { resolve } from 'path';
 
+// Satu entry (index.html). Portal karyawan (/app) dan HR (/hr) dipisah lewat react-router-dom.
 export default defineConfig({
   plugins: [react()],
-  build: {
-    rollupOptions: {
-      input: {
-        main: resolve(__dirname, 'index.html'),
-        hr: resolve(__dirname, 'hr/index.html'),
-      },
-    },
-  },
 });
