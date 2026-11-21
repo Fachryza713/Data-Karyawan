@@ -28,9 +28,6 @@ export default function EmployeePortal({ isDark, toggleTheme }) {
   const activeMenu = MENU.some((m) => m.id === sub) ? sub : 'beranda';
   const setActiveMenu = (id) => navigate(id === 'beranda' ? '/app' : `/app/${id}`);
   const [menuOpen, setMenuOpen] = useState(false);
-  // Nilai awal dari profil asli. Penyimpanan perubahan profil dikerjakan di modul Profil.
-  const [profilePhoto, setProfilePhoto] = useState(profile.photo_url);
-  const [userName, setUserName] = useState(profile.full_name);
 
   const handleLogout = async () => {
     await signOut();
@@ -53,27 +50,22 @@ export default function EmployeePortal({ isDark, toggleTheme }) {
           isDark={isDark}
           onToggleTheme={toggleTheme}
           onOpenMenu={() => setMenuOpen(true)}
-          userName={userName}
+          userName={profile.full_name}
           userRole={profileSubtitle(profile)}
-          profilePhoto={profilePhoto}
+          profilePhoto={profile.photo_url}
           searchPlaceholder="Cari kebijakan, formulir, dokumen"
           notifCount={2}
         />
         <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6 lg:py-8">
           {activeMenu === 'profil' ? (
-            <ProfilePage
-              profilePhoto={profilePhoto}
-              setProfilePhoto={setProfilePhoto}
-              userName={userName}
-              setUserName={setUserName}
-            />
+            <ProfilePage />
           ) : activeMenu === 'kehadiran' ? (
             <AttendancePage />
           ) : activeMenu === 'gaji' ? (
             <SalaryPage />
           ) : (
             <>
-              <WelcomeBanner userName={userName} />
+              <WelcomeBanner userName={profile.full_name} />
               <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
                 <AttendanceCard setActiveMenu={setActiveMenu} className="lg:col-span-2" />
                 <LeaveQuotaCard setActiveMenu={setActiveMenu} />
