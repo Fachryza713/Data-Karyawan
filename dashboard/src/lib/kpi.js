@@ -73,6 +73,184 @@ export async function fetchTemplateIndicators(positionId) {
   return { error: null, rows: (data?.indicators ?? []).slice().sort((a, b) => a.sort_order - b.sort_order) };
 }
 
+/* ── Penilaian (kpi_reviews + kpi_scores) ── */
+
+/** Status tampilan penilaian. Draft = skor sudah disimpan, belum final. */
+export const REVIEW_STATUS = {
+  belum: { label: 'Belum dinilai', tone: 'neutral' },
+  draft: { label: 'Draft', tone: 'warning' },
+  final: { label: 'Final', tone: 'success' },
+};
+
+/** reviewer_id kosong berarti HR belum pernah menyimpan skor (lihat migrasi kpi_reviews). */
+export const reviewStatusKey = (r) => (r.status === 'final' ? 'final' : r.reviewer_id ? 'draft' : 'belum');
+
+export const GRADE_TONE = { A: 'success', B: 'accent', C: 'warning', D: 'danger' };
+export const GRADE_SCALE = [
+  { grade: 'A', range: '85–100' },
+  { grade: 'B', range: '70–84' },
+  { grade: 'C', range: '55–69' },
+  { grade: 'D', range: '< 55' },
+];
+
+/** Grade dari skor akhir yang sudah dibulatkan (PRD 6.5, sama dengan public._kpi_grade). */
+export function gradeOf(score) {
+  if (score == null) return null;
+  if (score >= 85) return 'A';
+  if (score >= 70) return 'B';
+  if (score >= 55) return 'C';
+  return 'D';
+}
+
+/** Teks input skor ("87,5" atau "87.5") -> angka 0–100 maks. 2 desimal; selain itu null. */
+export function parseScore(text) {
+  const s = String(text ?? '').trim().replace(',', '.');
+  if (!/^\d{1,3}(\.\d{1,2})?$/.test(s)) return null;
+  const n = Number(s);
+  return n <= 100 ? n : null;
+}
+
+/**
+ * Σ skor × bobot / 100 untuk indikator yang skornya terisi, dibulatkan 1 desimal (setengah ke atas,
+ * sama dengan round() Postgres). Dihitung dalam bilangan bulat agar tidak meleset karena float.
+ * Hasil: { score, filled, count, complete }; score null jika belum ada yang terisi.
+ */
+export function scoreSummary(items) {
+  let total = 0;
+  let filled = 0;
+  items.forEach((it) => {
+    if (it.score == null) return;
+    total += Math.round(Number(it.score) * 100) * it.weight;
+    filled += 1;
+  });
+  return {
+    score: filled ? Math.round(total / 1000) / 10 : null,
+    filled,
+    count: items.length,
+    complete: items.length > 0 && filled === items.length,
+  };
+}
+
+/** Kontribusi satu indikator ke skor akhir (skor × bobot / 100). */
+export const contribution = (score, weight) => (score == null ? null : (Number(score) * weight) / 100);
+
+const scoreFmt = new Intl.NumberFormat('id-ID', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const rawFmt = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 });
+/** Skor akhir: selalu 1 desimal ("86,5"). */
+export const formatScore = (n) => (n == null ? '—' : scoreFmt.format(Number(n)));
+/** Skor indikator / kontribusi: tanpa nol berlebih ("92", "87,5", "26,25"). */
+export const formatPoints = (n) => (n == null ? '—' : rawFmt.format(Number(n)));
+
+const byOrder = (a, b) => a.sort_order - b.sort_order;
+const byPeriodDesc = (a, b) => (b.period?.start_date ?? '').localeCompare(a.period?.start_date ?? '');
+
+const REVIEW_LIST_SELECT = `id, status, final_score, grade, reviewer_id, updated_at, finalized_at,
+  employee:profiles!kpi_reviews_employee_id_fkey(id, full_name, nip, photo_url, is_active, division:divisions(id, name)),
+  position:positions(name),
+  reviewer:profiles!kpi_reviews_reviewer_id_fkey(full_name),
+  scores:kpi_scores(score, weight)`;
+
+/** Semua penilaian satu periode (khusus HR), urut nama karyawan. */
+export function useKpiReviews(periodId) {
+  const [state, setState] = useState({ loading: !!periodId, error: null, rows: [] });
+  const load = useCallback(async () => {
+    if (!periodId) {
+      setState({ loading: false, error: null, rows: [] });
+      return;
+    }
+    setState((s) => ({ ...s, loading: true, error: null }));
+    const { data, error } = await supabase.from('kpi_reviews').select(REVIEW_LIST_SELECT).eq('period_id', periodId);
+    const rows = (data ?? []).slice()
+      .sort((a, b) => (a.employee?.full_name ?? '').localeCompare(b.employee?.full_name ?? '', 'id'));
+    setState({ loading: false, error, rows });
+  }, [periodId]);
+  useEffect(() => { load(); }, [load]);
+  return { ...state, reload: load };
+}
+
+/** Satu penilaian + periode, karyawan, dan skor per indikator (khusus HR). reload() mengembalikan data. */
+export function useKpiReview(reviewId) {
+  const [state, setState] = useState({ loading: true, error: null, review: null });
+  const load = useCallback(async () => {
+    setState((s) => ({ ...s, loading: true, error: null }));
+    const { data, error } = await supabase.from('kpi_reviews')
+      .select(`id, status, final_score, grade, note, reviewer_id, updated_at, finalized_at,
+        period:kpi_periods(id, name, status, start_date, end_date, deadline),
+        employee:profiles!kpi_reviews_employee_id_fkey(id, full_name, nip, photo_url, division:divisions(name)),
+        position:positions(name),
+        reviewer:profiles!kpi_reviews_reviewer_id_fkey(full_name),
+        scores:kpi_scores(id, name, description, weight, target, score, note, sort_order)`)
+      .eq('id', reviewId).maybeSingle();
+    const review = data ? { ...data, scores: (data.scores ?? []).slice().sort(byOrder) } : null;
+    const next = { loading: false, error, review };
+    setState(next);
+    return next;
+  }, [reviewId]);
+  useEffect(() => { load(); }, [load]);
+  return { ...state, reload: load };
+}
+
+/**
+ * Ringkasan untuk beranda HR: periode aktif (atau periode selesai terbaru bila tidak ada yang aktif),
+ * jumlah penilaian, yang sudah final, draft, dan rata-rata skor akhir yang final.
+ */
+export function useKpiProgress() {
+  const [state, setState] = useState({ loading: true, error: null, period: null, total: 0, done: 0, draft: 0, average: null });
+  const load = useCallback(async () => {
+    setState((s) => ({ ...s, loading: true, error: null }));
+    const { data: periods, error } = await supabase.from('kpi_periods')
+      .select('id, name, status, deadline, closed_at')
+      .in('status', ['aktif', 'selesai'])
+      .order('start_date', { ascending: false });
+    const period = (periods ?? []).find((p) => p.status === 'aktif') ?? periods?.[0] ?? null;
+    if (error || !period) {
+      setState({ loading: false, error, period: null, total: 0, done: 0, draft: 0, average: null });
+      return;
+    }
+    const { data: reviews, error: revErr } = await supabase.from('kpi_reviews')
+      .select('status, final_score, reviewer_id').eq('period_id', period.id);
+    const rows = reviews ?? [];
+    const finals = rows.filter((r) => r.status === 'final');
+    const sum = finals.reduce((n, r) => n + Number(r.final_score), 0);
+    setState({
+      loading: false,
+      error: revErr,
+      period,
+      total: rows.length,
+      done: finals.length,
+      draft: rows.filter((r) => reviewStatusKey(r) === 'draft').length,
+      average: finals.length ? Math.round((sum / finals.length) * 10) / 10 : null,
+    });
+  }, []);
+  useEffect(() => { load(); }, [load]);
+  return { ...state, reload: load };
+}
+
+/** Hasil KPI final milik karyawan login (RLS: hanya miliknya dan hanya final), periode terbaru dulu. */
+export function useMyKpiResults(employeeId) {
+  const [state, setState] = useState({ loading: true, error: null, rows: [], activePeriod: null });
+  const load = useCallback(async () => {
+    setState((s) => ({ ...s, loading: true, error: null }));
+    const [res, act] = await Promise.all([
+      supabase.from('kpi_reviews')
+        .select(`id, final_score, grade, note, finalized_at,
+          period:kpi_periods(id, name, year, quarter, start_date, end_date, status),
+          position:positions(name),
+          scores:kpi_scores(id, name, description, weight, target, score, note, sort_order)`)
+        .eq('employee_id', employeeId)
+        .eq('status', 'final'),
+      supabase.from('kpi_periods').select('id, name, deadline').eq('status', 'aktif').maybeSingle(),
+    ]);
+    const rows = (res.data ?? [])
+      .filter((r) => r.period)
+      .map((r) => ({ ...r, scores: (r.scores ?? []).slice().sort(byOrder) }))
+      .sort(byPeriodDesc);
+    setState({ loading: false, error: res.error || act.error, rows, activePeriod: act.data ?? null });
+  }, [employeeId]);
+  useEffect(() => { load(); }, [load]);
+  return { ...state, reload: load };
+}
+
 /** Semua periode KPI, terbaru dulu. */
 export function useKpiPeriods() {
   const [state, setState] = useState({ loading: true, error: null, rows: [] });

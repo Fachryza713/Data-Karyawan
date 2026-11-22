@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ClipboardList, CalendarRange, RefreshCw, Loader2, AlertCircle, ChevronRight } from 'lucide-react';
+import { ClipboardList, ClipboardCheck, CalendarRange, RefreshCw, Loader2, AlertCircle, ChevronRight } from 'lucide-react';
 import { PageHeader, Card, Badge, IconButton, useToast, cx } from '../ui';
 import KpiPeriodsTab from './KpiPeriodsTab';
+import KpiReviewsTab from './KpiReviewsTab';
 import { templateStatus, kpiError, useKpiPositions } from '../../lib/kpi';
 
 const TABS = [
+  { id: 'penilaian', label: 'Penilaian', icon: ClipboardCheck },
   { id: 'template', label: 'Template', icon: ClipboardList },
   { id: 'periode', label: 'Periode', icon: CalendarRange },
 ];
@@ -121,19 +123,19 @@ function TemplatesTab({ positions }) {
   );
 }
 
-/* /hr/kpi/:tab — Template & Periode. */
+/* /hr/kpi/:tab — Penilaian, Template & Periode. */
 export default function KpiPage({ tab }) {
   const navigate = useNavigate();
   const positions = useKpiPositions();
   const [toast, toastNode] = useToast();
-  const active = TABS.some((t) => t.id === tab) ? tab : 'template';
+  const active = TABS.some((t) => t.id === tab) ? tab : 'penilaian';
   const panelId = 'kpi-panel';
 
   return (
     <>
       <PageHeader
         title="Evaluasi kinerja"
-        description="Template KPI per jabatan dan periode penilaian kuartalan."
+        description="Penilaian kuartalan, template KPI per jabatan, dan periode penilaian."
       />
 
       <div role="tablist" aria-label="Evaluasi kinerja" className="mb-5 flex gap-1 overflow-x-auto border-b border-line">
@@ -162,9 +164,9 @@ export default function KpiPage({ tab }) {
       </div>
 
       <div role="tabpanel" id={panelId} aria-labelledby={`kpi-tab-${active}`}>
-        {active === 'periode'
-          ? <KpiPeriodsTab positions={positions} toast={toast} />
-          : <TemplatesTab positions={positions} />}
+        {active === 'penilaian' ? <KpiReviewsTab />
+          : active === 'periode' ? <KpiPeriodsTab positions={positions} toast={toast} />
+            : <TemplatesTab positions={positions} />}
       </div>
       {toastNode}
     </>
