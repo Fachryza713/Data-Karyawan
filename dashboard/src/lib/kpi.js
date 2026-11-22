@@ -43,7 +43,7 @@ export function useKpiPositions() {
   return { ...state, reload: load };
 }
 
-/** Jabatan + template aktifnya + indikator (urut sort_order). */
+/** Jabatan + template aktifnya + indikator (urut sort_order). reload() mengembalikan data yang dimuat. */
 export function useKpiTemplate(positionId) {
   const [state, setState] = useState({ loading: true, error: null, position: null, template: null, indicators: [] });
   const load = useCallback(async () => {
@@ -56,7 +56,9 @@ export function useKpiTemplate(positionId) {
     ]);
     const error = pos.error || tpl.error;
     const indicators = (tpl.data?.indicators ?? []).slice().sort((a, b) => a.sort_order - b.sort_order);
-    setState({ loading: false, error, position: pos.data, template: tpl.data, indicators });
+    const next = { loading: false, error, position: pos.data, template: tpl.data, indicators };
+    setState(next);
+    return next;
   }, [positionId]);
   useEffect(() => { load(); }, [load]);
   return { ...state, reload: load };
