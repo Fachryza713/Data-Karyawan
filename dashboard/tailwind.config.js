@@ -3,7 +3,7 @@ const v = (name) => `var(--${name})`;
 
 export default {
   darkMode: 'class',
-  content: ['./index.html', './hr/index.html', './src/**/*.{js,jsx}'],
+  content: ['./index.html', './src/**/*.{js,jsx}'],
   theme: {
     extend: {
       colors: {

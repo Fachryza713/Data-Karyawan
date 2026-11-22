@@ -1,5 +1,5 @@
 -- =====================================================================
--- HRIS Blue Rose Tech — audit Row Level Security (PRD bagian 8 & 9)
+-- HRIS Blue Rose Tech — audit Row Level Security
 --
 -- Membuktikan, sebagai karyawan A (role employee):
 --   1. tidak bisa MEMBACA data karyawan B di setiap tabel milik karyawan;
