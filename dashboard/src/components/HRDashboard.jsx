@@ -7,6 +7,7 @@ import HRAttendancePage from './HRAttendancePage';
 import EmployeesModule from './hr/EmployeesModule';
 import SettingsPage from './hr/SettingsPage';
 import PayrollModule from './hr/PayrollModule';
+import KpiModule from './hr/KpiModule';
 import Sidebar from './Sidebar';
 import TopHeader from './TopHeader';
 import { PageHeader, Card, CardHeader, Button, Badge, Eyebrow, cx } from './ui';
@@ -261,6 +262,8 @@ export default function HRDashboard({ isDark, toggleTheme }) {
             <HRAttendancePage onRequestsChanged={reloadPendingCount} />
           ) : activeHrTab === 'penggajian' ? (
             <PayrollModule />
+          ) : activeHrTab === 'kpi' ? (
+            <KpiModule />
           ) : (
             <HRPlaceholder label={current.label} go={setActiveHrTab} />
           )}
