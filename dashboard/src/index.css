@@ -121,8 +121,13 @@
   }
 }
 
+/* Slip gaji cetak: #payslip-print dirender langsung di <body> (portal di SalaryPage).
+   Saat print hanya slip yang tampil, selalu terang meski dark mode aktif. */
+#payslip-print { display: none; }
+
 @media print {
-  body * { visibility: hidden; }
-  #payslip-print, #payslip-print * { visibility: visible; }
-  #payslip-print { position: absolute; inset: 0; }
+  @page { size: A4; margin: 14mm; }
+  html, body { background: #fff !important; }
+  body > *:not(#payslip-print) { display: none !important; }
+  #payslip-print { display: block; }
 }
