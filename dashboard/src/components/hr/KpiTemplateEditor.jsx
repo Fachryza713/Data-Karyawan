@@ -208,16 +208,25 @@ export default function KpiTemplateEditor() {
   const [busy, setBusy] = useState(false);
   const [showCopy, setShowCopy] = useState(false);
 
-  // Isi form dari database setiap kali data dimuat (awal dan setelah simpan).
-  useEffect(() => {
-    if (data.loading || !data.position) return;
-    const n = data.template?.name ?? `KPI ${data.position.name}`;
-    const list = data.indicators.map(toItem);
+  const [loadedFor, setLoadedFor] = useState(null); // positionId yang form-nya sudah diisi
+
+  const applyData = (d) => {
+    const n = d.template?.name ?? `KPI ${d.position.name}`;
+    const list = d.indicators.map(toItem);
     setName(n);
     setItems(list);
     setInitial(snapshot(n, list));
     setErrors({});
-  }, [data.loading, data.position, data.template, data.indicators]);
+  };
+
+  // Isi form dari database sekali per jabatan. Pemuatan berikutnya (mis. efek ganda StrictMode)
+  // tidak boleh menimpa ketikan HR; setelah simpan, form diisi ulang secara eksplisit di save().
+  useEffect(() => {
+    if (data.loading || !data.position || loadedFor === positionId) return;
+    applyData(data);
+    setLoadedFor(positionId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.loading, data.position, data.template, data.indicators, positionId, loadedFor]);
 
   const total = useMemo(() => items.reduce((n, i) => n + weightOf(i), 0), [items]);
   const dirty = initial !== null && snapshot(name, items) !== initial;
@@ -269,15 +278,18 @@ export default function KpiTemplateEditor() {
         id: i.id, name: i.name.trim(), description: i.description.trim(), weight: Number(i.weight), target: i.target.trim(),
       })),
     });
-    setBusy(false);
     if (error) {
+      setBusy(false);
       setErrors({ form: kpiError(error, 'Template gagal disimpan. Coba lagi.') });
       return;
     }
     toast(result.is_valid
       ? 'Template disimpan dan siap dipakai.'
       : `Template disimpan. Total bobot ${result.total_weight}%, belum bisa dipakai sampai tepat 100%.`);
-    data.reload();
+    // Muat ulang agar indikator baru mendapat id dari database, lalu isi form dari hasil itu.
+    const fresh = await data.reload();
+    if (fresh?.position && !fresh.error) applyData(fresh);
+    setBusy(false);
   };
 
   const back = (
@@ -286,7 +298,8 @@ export default function KpiTemplateEditor() {
     </button>
   );
 
-  if (data.loading && !data.position) {
+  // Tunggu juga sampai form terisi dari database untuk jabatan ini.
+  if ((data.loading && !data.position) || (data.position && loadedFor !== positionId)) {
     return (
       <>
         {back}
