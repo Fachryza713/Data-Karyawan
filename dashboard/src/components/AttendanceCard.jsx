@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { MapPin } from 'lucide-react';
 import { Card, Badge, Eyebrow, useToast, cx } from './ui';
-import ClockActions, { todayStatusText } from './ClockActions';
+import ClockActions, { todayStatusText, RemoteTodayNote } from './ClockActions';
 import { useTodayAttendance, timeJakarta, attendanceBadge, clockInBadge, hhmm } from '../lib/useTodayAttendance';
 
 const MONTH_STATS = [
@@ -44,6 +44,7 @@ export default function AttendanceCard({ setActiveMenu, className }) {
             )}
           </p>
           {!loading && <p className="mt-0.5 text-[13px] font-medium" aria-live="polite">{todayStatusText(att)}</p>}
+          {!loading && <RemoteTodayNote remote={att.remote} className="mt-2 max-w-sm" />}
         </div>
         <ClockActions att={att} onSuccess={toast} className="w-full sm:w-60" />
       </div>

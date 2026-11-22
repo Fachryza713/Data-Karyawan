@@ -29,11 +29,12 @@ function rpcMessage(error) {
 /**
  * Status presensi hari ini untuk karyawan yang login + aksi absen masuk/pulang.
  * phase: 'idle' | 'locating' | 'sending'. Aksi diabaikan selama phase bukan 'idle' (cegah klik ganda).
+ * remote: izin WFH/dinas luar yang disetujui untuk hari ini ({ kind, destination, ... }) atau null.
  */
 export function useTodayAttendance() {
   const { profile } = useAuth();
   const { getPosition } = useGeolocation();
-  const [state, setState] = useState({ loading: true, loadError: null, office: null, shift: null, today: null });
+  const [state, setState] = useState({ loading: true, loadError: null, office: null, shift: null, today: null, remote: null });
   const [phase, setPhase] = useState('idle');
   const [action, setAction] = useState(null); // 'clock_in' | 'clock_out' saat sedang diproses
   const [error, setError] = useState(null);
@@ -42,7 +43,8 @@ export function useTodayAttendance() {
   const load = useCallback(async () => {
     if (!profile) return;
     setState((s) => ({ ...s, loading: true, loadError: null }));
-    const [office, shift, today] = await Promise.all([
+    const date = todayJakarta();
+    const [office, shift, today, remote] = await Promise.all([
       profile.office_id
         ? supabase.from('offices').select('id, name, radius_m').eq('id', profile.office_id).maybeSingle()
         : { data: null },
@@ -51,10 +53,22 @@ export function useTodayAttendance() {
         : { data: null },
       supabase.from('attendances')
         .select('id, date, clock_in_at, clock_out_at, clock_in_distance_m, clock_out_distance_m, status, late_minutes, mode')
-        .eq('employee_id', profile.id).eq('date', todayJakarta()).maybeSingle(),
+        .eq('employee_id', profile.id).eq('date', date).maybeSingle(),
+      // Izin WFH/dinas disetujui yang mencakup hari ini (urutan sama dengan approved_remote_kind di server).
+      supabase.from('requests')
+        .select('id, kind, destination, start_date, end_date')
+        .eq('employee_id', profile.id).in('kind', ['wfh', 'dinas']).eq('status', 'disetujui')
+        .lte('start_date', date).gte('end_date', date)
+        .order('reviewed_at', { ascending: false, nullsFirst: false })
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
     ]);
     const loadError = office.error || shift.error || today.error || null;
-    setState({ loading: false, loadError, office: office.data, shift: shift.data, today: today.data });
+    // Info izin hanya penanda di UI; gagal dimuat tidak memblokir absen (server tetap memeriksa izin).
+    setState({
+      loading: false, loadError, office: office.data, shift: shift.data, today: today.data, remote: remote.data ?? null,
+    });
   }, [profile]);
 
   useEffect(() => { load(); }, [load]);

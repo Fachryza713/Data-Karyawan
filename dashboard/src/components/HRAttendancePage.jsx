@@ -1,52 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Download, Clock, RefreshCw, Paperclip, Check, X, MapPin, Search, ExternalLink, Loader2,
+  Download, Clock, RefreshCw, MapPin, Search, ExternalLink, Loader2,
 } from 'lucide-react';
 import {
-  PageHeader, Card, CardHeader, Badge, Button, IconButton, Modal, Avatar, Eyebrow, Field, Pagination, useToast, inputCls, cx,
+  PageHeader, Card, Badge, Button, IconButton, Modal, Avatar, Eyebrow, Field, Pagination, useToast, inputCls, cx,
 } from './ui';
+import RequestsReviewCard from './hr/RequestsReviewCard';
 import { supabase } from '../lib/supabase';
 import {
   LOG_STATUS, STATUS_LABEL, MODE_LABEL, isoJakarta, addDays, rpcAll, downloadCsv, mapsUrl, formatDistance,
 } from '../lib/attendance';
 import { timeJakarta } from '../lib/useTodayAttendance';
 import { formatDate } from '../lib/hr';
-
-
-/* ── data awal ── */
-const INITIAL_REQUESTS = [
-  {
-    id: 1, name: 'Raditya Pratama', nip: 'BRT-2023-0884', division: 'Teknologi Informasi', position: 'Frontend Developer',
-    type: 'cuti', typeLabel: 'Cuti tahunan', days: 2, dates: '26–27 Feb 2026',
-    reason: 'Acara keluarga dan perpanjangan dokumen pribadi di luar kota.',
-    attachment: null, quota: '8 hari', submitted: '24 Feb, 09:12', category: null, status: 'pending',
-  },
-  {
-    id: 2, name: 'Sarah Anindita', nip: 'BRT-2022-019', division: 'Human Capital', position: 'People Ops Lead',
-    type: 'sakit', typeLabel: 'Sakit', days: 1, dates: '24 Feb 2026',
-    reason: 'Demam tinggi dan flu, surat keterangan dokter terlampir.',
-    attachment: 'Surat Dokter.pdf', quota: null, submitted: '24 Feb, 07:45', category: 'Rawat jalan', status: 'pending',
-  },
-  {
-    id: 3, name: 'Dimas Pratama', nip: 'BRT-2024-002', division: 'Pemasaran & Komunikasi', position: 'Digital Growth Specialist',
-    type: 'cuti', typeLabel: 'Izin khusus', days: 1, dates: '28 Feb 2026',
-    reason: 'Mengurus administrasi wisuda universitas.',
-    attachment: null, quota: null, submitted: '23 Feb, 16:30', category: 'Sesuai PKB', status: 'pending',
-  },
-  {
-    id: 4, name: 'Rina Kusuma', nip: 'BRT-2023-055', division: 'Operasional', position: 'Supply Chain Analyst',
-    type: 'cuti', typeLabel: 'Cuti tahunan', days: 3, dates: '3–5 Mar 2026',
-    reason: 'Liburan keluarga ke Bali.',
-    attachment: null, quota: '10 hari', submitted: '22 Feb, 14:20', category: null, status: 'pending',
-  },
-  {
-    id: 5, name: 'Arief Hidayat', nip: 'BRT-2021-033', division: 'Keuangan', position: 'Tax Specialist',
-    type: 'sakit', typeLabel: 'Sakit', days: 2, dates: '24–25 Feb 2026',
-    reason: 'Rawat jalan pasca operasi gigi bungsu.',
-    attachment: 'Rujukan RS.pdf', quota: null, submitted: '23 Feb, 20:05', category: 'Rawat jalan', status: 'pending',
-  },
-];
 
 
 /* ── Log presensi (data dari RPC hr_attendance_log / hr_attendance_summary) ── */
@@ -225,14 +191,9 @@ function ExportModal({ defaultDate, onClose, onDone }) {
   );
 }
 
-const typeTone = (r) => (r.type === 'sakit' ? 'warning' : r.typeLabel === 'Izin khusus' ? 'neutral' : 'accent');
-
-export default function HRAttendancePage() {
+/** `onRequestsChanged()` dipanggil setelah HR memproses pengajuan (mis. untuk badge sidebar). */
+export default function HRAttendancePage({ onRequestsChanged }) {
   const navigate = useNavigate();
-  const [requests, setRequests] = useState(INITIAL_REQUESTS);
-  const [filterTab, setFilterTab] = useState('semua');
-  const [docModal, setDocModal] = useState(null);
-  const [showAll, setShowAll] = useState(false);
   const [toast, toastNode] = useToast();
 
   const [date, setDate] = useState(() => isoJakarta());
@@ -249,23 +210,11 @@ export default function HRAttendancePage() {
     supabase.from('divisions').select('id, name').order('name').then(({ data }) => setDivisions(data ?? []));
   }, []);
 
-  const handleAction = (r, action) => {
-    setRequests((prev) => prev.map((x) => (x.id === r.id ? { ...x, status: action } : x)));
-    toast(
-      action === 'approved' ? `Pengajuan ${r.name} disetujui.` : `Pengajuan ${r.name} ditolak.`,
-      action === 'approved' ? 'success' : 'error',
-    );
+  // Persetujuan cuti mengubah presensi (cuti/sakit/izin), jadi log ikut dimuat ulang.
+  const handleRequestsChanged = () => {
+    log.reload();
+    onRequestsChanged?.();
   };
-
-  const pending = requests.filter((r) => r.status === 'pending');
-  const tabs = [
-    { id: 'semua', label: 'Semua', count: pending.length },
-    { id: 'cuti', label: 'Cuti & izin', count: pending.filter((r) => r.type === 'cuti').length },
-    { id: 'sakit', label: 'Sakit', count: pending.filter((r) => r.type === 'sakit').length },
-  ];
-  const filtered = pending.filter((r) => filterTab === 'semua' || r.type === filterTab);
-  const visible = showAll ? filtered : filtered.slice(0, 3);
-  const hiddenCount = filtered.length - visible.length;
 
   const logRows = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -319,82 +268,7 @@ export default function HRAttendancePage() {
       </Card>
 
       {/* Antrean persetujuan */}
-      <Card className="mt-5">
-        <div className="flex flex-col gap-3 border-b border-line px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-          <h2 className="text-[15px] font-semibold">Menunggu persetujuan</h2>
-          <div role="tablist" aria-label="Filter pengajuan" className="flex gap-1">
-            {tabs.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                role="tab"
-                aria-selected={filterTab === t.id}
-                onClick={() => { setFilterTab(t.id); setShowAll(false); }}
-                className={cx(
-                  'h-8 rounded-md px-3 text-[13px] font-medium transition-colors',
-                  filterTab === t.id ? 'bg-subtle text-fg ring-1 ring-line-strong' : 'text-muted hover:text-fg',
-                )}
-              >
-                {t.label} <span className="num text-faint">{t.count}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {visible.length === 0 ? (
-          <p className="px-5 py-12 text-center text-sm text-muted">Tidak ada pengajuan yang menunggu.</p>
-        ) : (
-          <ul className="divide-y divide-line">
-            {visible.map((r) => (
-              <li key={r.id} className="flex flex-col gap-4 px-5 py-4 sm:flex-row">
-                <Avatar name={r.name} size={36} />
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-baseline gap-x-2">
-                    <p className="text-sm font-medium">{r.name}</p>
-                    <p className="text-[13px] text-faint">{r.position} · {r.division}</p>
-                  </div>
-                  <div className="mt-2 flex flex-wrap items-center gap-2 text-[13px]">
-                    <Badge tone={typeTone(r)}>{r.typeLabel}</Badge>
-                    <span className="num text-fg">{r.dates}</span>
-                    <span className="text-faint">· {r.days} hari</span>
-                  </div>
-                  <p className="mt-2 text-sm text-muted">{r.reason}</p>
-                  <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-faint">
-                    {r.attachment && (
-                      <button
-                        type="button"
-                        onClick={() => setDocModal(r)}
-                        className="inline-flex items-center gap-1 font-medium text-accent-text hover:underline"
-                      >
-                        <Paperclip size={12} aria-hidden="true" /> {r.attachment}
-                      </button>
-                    )}
-                    {r.quota && <span>Sisa kuota {r.quota}</span>}
-                    {r.category && <span>{r.category}</span>}
-                    <span>Diajukan {r.submitted}</span>
-                  </div>
-                </div>
-                <div className="flex gap-2 sm:flex-col">
-                  <Button size="sm" onClick={() => handleAction(r, 'approved')}>
-                    <Check size={14} aria-hidden="true" /> Setujui
-                  </Button>
-                  <Button size="sm" variant="danger" onClick={() => handleAction(r, 'rejected')}>
-                    <X size={14} aria-hidden="true" /> Tolak
-                  </Button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-
-        {hiddenCount > 0 && (
-          <div className="border-t border-line px-5 py-3 text-center">
-            <button type="button" onClick={() => setShowAll(true)} className="text-[13px] font-medium text-accent-text hover:underline">
-              Tampilkan {hiddenCount} lainnya
-            </button>
-          </div>
-        )}
-      </Card>
+      <RequestsReviewCard className="mt-5" toast={toast} onChanged={handleRequestsChanged} />
 
       {/* Log presensi */}
       <Card className="mt-5">
@@ -534,22 +408,6 @@ export default function HRAttendancePage() {
           onClose={() => setShowExport(false)}
           onDone={(msg) => { setShowExport(false); toast(msg); }}
         />
-      )}
-      {docModal && (
-        <Modal
-          size="sm"
-          title={docModal.attachment}
-          description={`Lampiran pengajuan ${docModal.name}`}
-          onClose={() => setDocModal(null)}
-          footer={<Button variant="secondary" onClick={() => setDocModal(null)}>Tutup</Button>}
-        >
-          <dl className="grid grid-cols-[110px_1fr] gap-y-2 text-sm">
-            <dt className="text-faint">Penerbit</dt><dd>dr. Andini, Sp.PD — RS Pertamina Jaya</dd>
-            <dt className="text-faint">Tanggal</dt><dd>23 Februari 2026</dd>
-            <dt className="text-faint">Diagnosis</dt><dd>ISPA</dd>
-            <dt className="text-faint">Istirahat</dt><dd>1 hari kerja</dd>
-          </dl>
-        </Modal>
       )}
       {toastNode}
     </>

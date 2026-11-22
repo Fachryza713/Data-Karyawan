@@ -1,5 +1,5 @@
 import React from 'react';
-import { LogIn, LogOut, Loader2, AlertCircle } from 'lucide-react';
+import { LogIn, LogOut, Loader2, AlertCircle, House, Briefcase } from 'lucide-react';
 import { Button, cx } from './ui';
 import { timeJakarta, attendanceBadge } from '../lib/useTodayAttendance';
 
@@ -10,6 +10,25 @@ export function todayStatusText(att) {
   if (checkedIn) return `Sudah masuk pukul ${timeJakarta(today.clock_in_at)} WIB`;
   if (today) return `Hari ini tercatat ${attendanceBadge(today)?.label.toLowerCase() ?? today.status}`;
   return 'Belum absen hari ini';
+}
+
+/**
+ * Penanda izin WFH/dinas luar yang disetujui untuk hari ini, supaya karyawan tahu
+ * ia boleh absen di luar radius kantor. `remote` = att.remote dari useTodayAttendance().
+ */
+export function RemoteTodayNote({ remote, className }) {
+  if (!remote) return null;
+  const dinas = remote.kind === 'dinas';
+  const Icon = dinas ? Briefcase : House;
+  return (
+    <p className={cx('flex items-start gap-1.5 rounded-lg bg-success-soft px-3 py-2 text-[13px] text-success', className)}>
+      <Icon size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
+      <span className="min-w-0 break-words">
+        <span className="font-medium">{dinas ? `Dinas luar ke ${remote.destination}` : 'Hari ini: WFH disetujui'}</span>
+        {' '}· Absen boleh di luar radius kantor.
+      </span>
+    </p>
+  );
 }
 
 function busyLabel(phase) {

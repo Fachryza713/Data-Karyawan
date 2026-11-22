@@ -17,6 +17,12 @@ export const KIND_LABEL = { leave: 'Cuti', wfh: 'WFH', dinas: 'Dinas luar' };
 
 export const currentYear = () => Number(isoJakarta().slice(0, 4));
 
+const dateTimeFmt = new Intl.DateTimeFormat('id-ID', {
+  day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Jakarta',
+});
+/** "22 Nov 2026 09.12" (WIB) dari timestamptz. */
+export const dateTimeJakarta = (ts) => (ts ? dateTimeFmt.format(new Date(ts)) : '—');
+
 /** Pesan error RPC yang aman ditampilkan (pesan server sudah Bahasa Indonesia). */
 export function rpcMessage(error, fallback = 'Gagal memproses. Coba lagi.') {
   if (['P0001', 'P0002', '42501', '22023'].includes(error?.code) && error.message) return error.message;
@@ -76,7 +82,7 @@ export function useMyRequests() {
   const load = useCallback(async () => {
     setState((s) => ({ ...s, loading: true, error: null }));
     const { data, error } = await supabase.from('requests')
-      .select('id, kind, start_date, end_date, working_days, reason, attachment_path, status, review_note, created_at, leave_type:leave_types(code, name)')
+      .select('id, kind, start_date, end_date, working_days, reason, destination, attachment_path, status, review_note, reviewed_at, created_at, leave_type:leave_types(code, name)')
       .eq('employee_id', profile.id)
       .order('created_at', { ascending: false })
       .limit(50);
@@ -84,6 +90,24 @@ export function useMyRequests() {
   }, [profile.id]);
   useEffect(() => { load(); }, [load]);
   return { ...state, reload: load };
+}
+
+/**
+ * Jumlah pengajuan menunggu yang bisa diproses HR yang login (badge sidebar).
+ * Pengajuan milik sendiri tidak dihitung karena review_request menolaknya.
+ */
+export function usePendingRequestCount() {
+  const { profile } = useAuth();
+  const [count, setCount] = useState(null);
+  const load = useCallback(async () => {
+    const { count: n, error } = await supabase.from('requests')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'menunggu')
+      .neq('employee_id', profile.id);
+    if (!error) setCount(n ?? 0);
+  }, [profile.id]);
+  useEffect(() => { load(); }, [load]);
+  return { count, reload: load };
 }
 
 /** URL sementara (5 menit) untuk membuka lampiran privat. */

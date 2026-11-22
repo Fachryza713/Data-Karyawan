@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { Loader2, Paperclip, XCircle } from 'lucide-react';
-import { Card, CardHeader, Badge, Button, Modal } from './ui';
+import { Card, CardHeader, Badge, Button, Modal, cx } from './ui';
 import { supabase } from '../lib/supabase';
-import { REQUEST_STATUS, KIND_LABEL, rpcMessage, attachmentUrl } from '../lib/leave';
+import { REQUEST_STATUS, KIND_LABEL, rpcMessage, attachmentUrl, dateTimeJakarta } from '../lib/leave';
 import { formatDate } from '../lib/hr';
 
 const rangeText = (r) => (r.start_date === r.end_date ? formatDate(r.start_date) : `${formatDate(r.start_date)} – ${formatDate(r.end_date)}`);
@@ -74,14 +74,22 @@ export default function MyRequestsCard({ requests, onChanged, className }) {
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="text-sm font-medium">{r.leave_type?.name ?? KIND_LABEL[r.kind]}</p>
                     <Badge tone={st.tone} dot>{st.label}</Badge>
+                    {r.reviewed_at && (
+                      <span className="text-xs text-faint">diproses HR <span className="num">{dateTimeJakarta(r.reviewed_at)}</span></span>
+                    )}
                   </div>
                   <p className="mt-0.5 text-[13px] text-muted">
                     <span className="num">{rangeText(r)}</span>
                     <span className="text-faint"> · <span className="num">{r.working_days}</span> hari kerja</span>
                   </p>
+                  {r.kind === 'dinas' && r.destination && (
+                    <p className="mt-0.5 break-words text-[13px] text-muted">Tujuan: <span className="text-fg">{r.destination}</span></p>
+                  )}
                   <p className="mt-1 line-clamp-2 text-[13px] text-muted">{r.reason}</p>
-                  {r.status === 'ditolak' && r.review_note && (
-                    <p className="mt-1 text-[13px] text-danger">Catatan HR: {r.review_note}</p>
+                  {r.review_note && (
+                    <p className={cx('mt-1 whitespace-pre-line break-words text-[13px]', r.status === 'ditolak' ? 'text-danger' : 'text-muted')}>
+                      Catatan HR: {r.review_note}
+                    </p>
                   )}
                   {r.attachment_path && (
                     <button

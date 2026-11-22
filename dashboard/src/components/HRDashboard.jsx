@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   Home, Users, Clock, Wallet, TrendingUp, Settings, Download, Plus, ChevronRight, Construction,
@@ -10,11 +10,12 @@ import Sidebar from './Sidebar';
 import TopHeader from './TopHeader';
 import { PageHeader, Card, CardHeader, Button, Badge, Eyebrow, cx } from './ui';
 import { useAuth, profileSubtitle } from '../context/AuthContext';
+import { usePendingRequestCount } from '../lib/leave';
 
 const hrMenu = [
   { id: 'beranda', label: 'Beranda', icon: Home },
   { id: 'karyawan', label: 'Data karyawan', icon: Users },
-  { id: 'kehadiran', label: 'Kehadiran & cuti', icon: Clock, count: 5 },
+  { id: 'kehadiran', label: 'Kehadiran & cuti', icon: Clock },
   { id: 'penggajian', label: 'Penggajian & manfaat', icon: Wallet },
   { id: 'kpi', label: 'Evaluasi kinerja', icon: TrendingUp },
 ];
@@ -175,6 +176,11 @@ export default function HRDashboard({ isDark, toggleTheme }) {
   const setActiveHrTab = (id) => navigate(id === 'beranda' ? '/hr' : `/hr/${id}`);
   const [menuOpen, setMenuOpen] = useState(false);
   const current = hrMenu.find((m) => m.id === activeHrTab);
+  const pendingCount = usePendingRequestCount();
+  const reloadPendingCount = pendingCount.reload;
+  // Badge "Kehadiran & cuti" = jumlah pengajuan menunggu; disegarkan setiap pindah menu.
+  useEffect(() => { reloadPendingCount(); }, [section, reloadPendingCount]);
+  const menuItems = hrMenu.map((m) => (m.id === 'kehadiran' && pendingCount.count > 0 ? { ...m, count: pendingCount.count } : m));
 
   const handleLogout = async () => {
     await signOut();
@@ -184,7 +190,7 @@ export default function HRDashboard({ isDark, toggleTheme }) {
   return (
     <div className="flex min-h-screen bg-canvas text-fg">
       <Sidebar
-        items={hrMenu}
+        items={menuItems}
         active={activeHrTab}
         onSelect={setActiveHrTab}
         subtitle="Portal HR & Admin"
@@ -225,7 +231,7 @@ export default function HRDashboard({ isDark, toggleTheme }) {
           ) : activeHrTab === 'karyawan' ? (
             <EmployeesModule />
           ) : activeHrTab === 'kehadiran' ? (
-            <HRAttendancePage />
+            <HRAttendancePage onRequestsChanged={reloadPendingCount} />
           ) : (
             <HRPlaceholder label={current.label} go={setActiveHrTab} />
           )}
