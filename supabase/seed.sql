@@ -73,3 +73,7 @@ insert into public.holidays (date, name) values
   ('2026-08-25', 'Maulid Nabi Muhammad SAW'),
   ('2026-12-25', 'Hari Raya Natal')
 on conflict (date) do nothing;
+
+-- Contoh template KPI (Frontend Developer, HR Generalist, Sales Executive) + periode Q1 2026.
+-- Fungsi dibuat di migrasi KPI; dipanggil ulang di sini karena jabatan baru ada setelah seed di atas.
+select public._seed_kpi_examples();
