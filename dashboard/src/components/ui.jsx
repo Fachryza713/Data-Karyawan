@@ -115,6 +115,11 @@ export function Badge({ tone = 'neutral', dot = false, className, children }) {
   );
 }
 
+/* ── Skeleton: blok abu-abu selagi data dimuat (berkedip hanya bila gerak diizinkan) ── */
+export function Skeleton({ className }) {
+  return <span className={cx('block rounded-md bg-subtle motion-safe:animate-pulse', className)} aria-hidden="true" />;
+}
+
 /* ── Avatar inisial (warna netral, bukan pelangi acak) ── */
 export function Avatar({ name = '', src, size = 36, className }) {
   const initials = name

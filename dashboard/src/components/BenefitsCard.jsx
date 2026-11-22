@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ChevronRight, HeartPulse, Briefcase, ShieldPlus } from 'lucide-react';
-import { Card, CardHeader, Badge, Button, Modal, cx } from './ui';
+import { Card, CardHeader, Badge, Button, Modal, Skeleton, cx } from './ui';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 
@@ -10,6 +10,8 @@ const rank = (p) => {
   const i = PROVIDER_ORDER.indexOf(p);
   return i === -1 ? PROVIDER_ORDER.length : i;
 };
+const sortBenefits = (rows) => rows.slice()
+  .sort((a, b) => rank(a.provider) - rank(b.provider) || a.provider.localeCompare(b.provider, 'id'));
 
 const iconFor = (provider) => {
   if (provider === 'BPJS Kesehatan') return HeartPulse;
@@ -39,9 +41,7 @@ export function useMyBenefits() {
     const { data, error } = await supabase.from('benefits')
       .select('id, provider, program, card_no, class, dependents, status')
       .eq('employee_id', profile.id);
-    const rows = (data ?? []).slice()
-      .sort((a, b) => rank(a.provider) - rank(b.provider) || a.provider.localeCompare(b.provider, 'id'));
-    setState({ loading: false, error, rows });
+    setState({ loading: false, error, rows: sortBenefits(data ?? []) });
   }, [profile.id]);
   useEffect(() => { load(); }, [load]);
   return { ...state, reload: load, activeCount: state.rows.filter((b) => b.status === 'aktif').length };
@@ -76,8 +76,8 @@ export function BenefitModal({ benefit: b, onClose }) {
   );
 }
 
-/** Daftar manfaat. `benefits` = hasil useMyBenefits(). */
-export function BenefitList({ benefits, onSelect }) {
+/** Daftar manfaat. `benefits` = hasil useMyBenefits(). `compact` menyembunyikan nomor kartu (kartu sempit). */
+export function BenefitList({ benefits, onSelect, compact = false }) {
   const { rows, loading, error, reload } = benefits;
   if (error) {
     return (
@@ -108,7 +108,7 @@ export function BenefitList({ benefits, onSelect }) {
                 <p className="text-sm font-medium">{b.provider}</p>
                 <p className="truncate text-[13px] text-muted">{subtitle(b)}</p>
               </div>
-              <span className="num hidden text-[13px] text-faint md:block">{b.card_no ?? '—'}</span>
+              {!compact && <span className="num hidden text-[13px] text-faint md:block">{b.card_no ?? '—'}</span>}
               <Badge tone={st.tone}>{st.label}</Badge>
               <ChevronRight size={16} className="shrink-0 text-faint transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
             </button>
@@ -119,18 +119,40 @@ export function BenefitList({ benefits, onSelect }) {
   );
 }
 
-export default function BenefitsCard({ className }) {
-  const benefits = useMyBenefits();
+/**
+ * Kartu beranda: ringkasan manfaat dari my_dashboard() (`benefits` = daftar, `activeCount` = jumlah aktif).
+ */
+export default function BenefitsCard({ benefits, activeCount = 0, loading, setActiveMenu, className }) {
   const [selected, setSelected] = useState(null);
+  const list = useMemo(() => ({ rows: sortBenefits(benefits ?? []), loading: false, error: null }), [benefits]);
 
   return (
     <>
       <Card className={cx('flex flex-col', className)}>
         <CardHeader
           title="Manfaat & asuransi"
-          description={benefits.loading ? 'Memuat…' : `${benefits.activeCount} program aktif`}
+          description={loading ? 'Memuat…' : activeCount ? `${activeCount} program aktif` : 'Belum ada program aktif'}
         />
-        <BenefitList benefits={benefits} onSelect={setSelected} />
+        {loading ? (
+          <div className="space-y-4 px-5 py-4" aria-label="Memuat manfaat">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="flex items-center gap-4">
+                <Skeleton className="h-5 w-5 rounded-full" />
+                <div className="flex-1 space-y-1.5">
+                  <Skeleton className="h-4 w-32" />
+                  <Skeleton className="h-3 w-44" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <BenefitList benefits={list} onSelect={setSelected} compact />
+        )}
+        <div className="mt-auto border-t border-line p-5">
+          <Button variant="secondary" className="w-full" onClick={() => setActiveMenu('gaji')}>
+            Detail manfaat
+          </Button>
+        </div>
       </Card>
       {selected && <BenefitModal benefit={selected} onClose={() => setSelected(null)} />}
     </>

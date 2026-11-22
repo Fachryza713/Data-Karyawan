@@ -30,11 +30,21 @@ function rpcMessage(error) {
  * Status presensi hari ini untuk karyawan yang login + aksi absen masuk/pulang.
  * phase: 'idle' | 'locating' | 'sending'. Aksi diabaikan selama phase bukan 'idle' (cegah klik ganda).
  * remote: izin WFH/dinas luar yang disetujui untuk hari ini ({ kind, destination, ... }) atau null.
+ *
+ * preset (opsional, dipakai beranda): data yang sudah dimuat pemanggil, mis. dari my_dashboard(),
+ * berbentuk { loading, error, office, shift, today, remote, reload }. Bila ada, hook tidak memuat
+ * sendiri dan reload() memanggil preset.reload. Objek preset harus stabil (useMemo).
  */
-export function useTodayAttendance() {
+const fromPreset = (p) => ({
+  loading: p.loading, loadError: p.error ?? null, office: p.office, shift: p.shift, today: p.today, remote: p.remote,
+});
+
+export function useTodayAttendance(preset = null) {
   const { profile } = useAuth();
   const { getPosition } = useGeolocation();
-  const [state, setState] = useState({ loading: true, loadError: null, office: null, shift: null, today: null, remote: null });
+  const [state, setState] = useState(() => (preset
+    ? fromPreset(preset)
+    : { loading: true, loadError: null, office: null, shift: null, today: null, remote: null }));
   const [phase, setPhase] = useState('idle');
   const [action, setAction] = useState(null); // 'clock_in' | 'clock_out' saat sedang diproses
   const [error, setError] = useState(null);
@@ -71,7 +81,10 @@ export function useTodayAttendance() {
     });
   }, [profile]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    if (preset) setState(fromPreset(preset));
+    else load();
+  }, [load, preset]);
 
   const run = useCallback(async (fn) => {
     if (busy.current) return null;
@@ -114,7 +127,7 @@ export function useTodayAttendance() {
 
   return {
     ...state,
-    reload: load,
+    reload: preset?.reload ?? load,
     phase,
     action,
     error,

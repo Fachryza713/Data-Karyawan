@@ -3,11 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Home, User, Clock, Wallet, TrendingUp } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import TopHeader from './components/TopHeader';
-import WelcomeBanner from './components/WelcomeBanner';
-import AttendanceCard from './components/AttendanceCard';
-import LeaveQuotaCard from './components/LeaveQuotaCard';
-import SalaryCard from './components/SalaryCard';
-import BenefitsCard from './components/BenefitsCard';
+import EmployeeHome from './components/EmployeeHome';
 import ProfilePage from './components/ProfilePage';
 import AttendancePage from './components/AttendancePage';
 import SalaryPage from './components/SalaryPage';
@@ -68,15 +64,7 @@ export default function EmployeePortal({ isDark, toggleTheme }) {
           ) : activeMenu === 'kinerja' ? (
             <PerformancePage />
           ) : (
-            <>
-              <WelcomeBanner userName={profile.full_name} />
-              <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-                <AttendanceCard setActiveMenu={setActiveMenu} className="lg:col-span-2" />
-                <LeaveQuotaCard setActiveMenu={setActiveMenu} />
-                <SalaryCard setActiveMenu={setActiveMenu} />
-                <BenefitsCard className="lg:col-span-2" />
-              </div>
-            </>
+            <EmployeeHome setActiveMenu={setActiveMenu} />
           )}
         </main>
       </div>
