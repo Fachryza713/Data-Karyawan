@@ -14,7 +14,8 @@ import { PageHeader, Card, CardHeader, Button, Badge, Eyebrow, cx } from './ui';
 import { useAuth, profileSubtitle } from '../context/AuthContext';
 import { usePendingRequestCount } from '../lib/leave';
 import { RUN_STATUS, periodMonth, usePayrollRuns } from '../lib/payroll';
-import { formatRupiah } from '../lib/hr';
+import { formatRupiah, formatDate, todayWIB } from '../lib/hr';
+import { useKpiProgress, formatScore, gradeOf } from '../lib/kpi';
 
 const hrMenu = [
   { id: 'beranda', label: 'Beranda', icon: Home },
@@ -151,32 +152,66 @@ function HRHome({ go }) {
         </Card>
       </div>
 
-      {/* KPI */}
-      <Card className="mt-5">
-        <CardHeader
-          title="Evaluasi kinerja Q1 2026"
-          description="Tenggat pengisian 31 Maret 2026"
-          action={<Button variant="secondary" size="sm" onClick={() => go('kpi')}>Kelola KPI</Button>}
-        />
-        <div className="grid gap-6 p-5 sm:grid-cols-3">
-          <div className="sm:col-span-2">
-            <div className="flex items-baseline justify-between text-sm">
-              <span className="text-muted">Sudah dinilai</span>
-              <span className="num font-medium">108 / 128</span>
-            </div>
-            <div className="mt-2 h-2 overflow-hidden rounded-full bg-subtle" role="progressbar" aria-valuenow={108} aria-valuemin={0} aria-valuemax={128} aria-label="Progres penilaian KPI">
-              <div className="h-full rounded-full bg-accent" style={{ width: '84%' }} />
-            </div>
-            <p className="mt-2 text-[13px] text-muted">20 karyawan menunggu input penilaian dan persetujuan bonus.</p>
-          </div>
-          <div>
-            <Eyebrow>Rata-rata skor</Eyebrow>
-            <p className="mt-1 font-display text-2xl font-semibold"><span className="num">88</span><span className="text-sm font-medium text-faint"> / 100</span></p>
-            <p className="text-[13px] text-muted">Grade A</p>
-          </div>
-        </div>
-      </Card>
+      <KpiProgressCard go={go} />
     </>
+  );
+}
+
+/** Kartu "Evaluasi kinerja": periode aktif (atau selesai terbaru), progres final, tenggat, rata-rata skor. */
+function KpiProgressCard({ go }) {
+  const kpi = useKpiProgress();
+  const { period, total, done, draft, average } = kpi;
+  const action = <Button variant="secondary" size="sm" onClick={() => go('kpi')}>Kelola KPI</Button>;
+
+  if (!period) {
+    return (
+      <Card className="mt-5">
+        <CardHeader title="Evaluasi kinerja" action={action} />
+        <p className="px-5 py-8 text-center text-sm text-muted">
+          {kpi.loading ? 'Memuat…' : kpi.error ? 'Data KPI gagal dimuat.' : 'Belum ada periode penilaian aktif.'}
+        </p>
+      </Card>
+    );
+  }
+
+  const active = period.status === 'aktif';
+  const pending = total - done;
+  const overdue = active && pending > 0 && todayWIB() > period.deadline;
+  const pct = total ? Math.round((done / total) * 100) : 0;
+  let note;
+  if (total === 0) note = 'Belum ada karyawan dalam periode ini.';
+  else if (pending === 0) note = 'Semua karyawan sudah dinilai.';
+  else note = `${pending} karyawan belum final${draft ? ` (${draft} draft)` : ''}.`;
+
+  return (
+    <Card className="mt-5">
+      <CardHeader
+        title={`Evaluasi kinerja ${period.name}`}
+        description={active
+          ? <>Tenggat pengisian {formatDate(period.deadline)}{overdue && <span className="font-medium text-warning"> · lewat tenggat</span>}</>
+          : 'Periode selesai. Belum ada periode aktif.'}
+        action={action}
+      />
+      <div className="grid gap-6 p-5 sm:grid-cols-3">
+        <div className="sm:col-span-2">
+          <div className="flex items-baseline justify-between text-sm">
+            <span className="text-muted">Sudah dinilai</span>
+            <span className="num font-medium">{done} / {total}</span>
+          </div>
+          <div className="mt-2 h-2 overflow-hidden rounded-full bg-subtle" role="progressbar" aria-valuenow={done} aria-valuemin={0} aria-valuemax={total} aria-label="Progres penilaian KPI">
+            <div className="h-full rounded-full bg-accent" style={{ width: `${pct}%` }} />
+          </div>
+          <p className="mt-2 text-[13px] text-muted">{note}</p>
+        </div>
+        <div>
+          <Eyebrow>Rata-rata skor</Eyebrow>
+          <p className="mt-1 font-display text-2xl font-semibold">
+            <span className="num">{formatScore(average)}</span><span className="text-sm font-medium text-faint"> / 100</span>
+          </p>
+          <p className="text-[13px] text-muted">{average == null ? 'Belum ada penilaian final' : `Grade ${gradeOf(average)}`}</p>
+        </div>
+      </div>
+    </Card>
   );
 }
 

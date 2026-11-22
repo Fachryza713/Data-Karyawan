@@ -357,6 +357,7 @@ export default function KpiPeriodsTab({ positions, toast }) {
             Penilaian KPI untuk <span className="num font-medium text-fg">{rangeText(modal.period)}</span> dibuka dengan tenggat{' '}
             <span className="num font-medium text-fg">{formatDate(modal.period.deadline)}</span>.
           </p>
+          <p>Draft penilaian dibuat otomatis untuk setiap karyawan aktif, memakai template jabatannya saat ini.</p>
           <p>Karyawan bisa melihat periode ini. Hanya satu periode yang boleh aktif.</p>
         </ConfirmModal>
       )}
