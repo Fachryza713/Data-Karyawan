@@ -110,13 +110,8 @@ export default function HRDashboard({ isDark, toggleTheme }) {
             <HRPlaceholder label={current.label} go={setActiveHrTab} />
           )}
         </main>
-        <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-4 py-4 text-xs text-faint sm:px-6">
-          <p>© 2026 Blue Rose Tech</p>
-          <div className="flex flex-wrap gap-4">
-            <a href="#" className="hover:text-fg">Kebijakan privasi</a>
-            <a href="#" className="hover:text-fg">Pedoman HR</a>
-            <a href="#" className="hover:text-fg">Bantuan IT</a>
-          </div>
+        <footer className="border-t border-line px-4 py-4 text-xs text-faint sm:px-6">
+          <p>© {new Date().getFullYear()} Blue Rose Tech</p>
         </footer>
       </div>
     </div>

@@ -45,7 +45,6 @@ export const isWeekendIso = (iso) => [0, 6].includes(new Date(`${iso}T00:00:00Z`
 export async function rpcAll(fn, args, pageSize = 1000) {
   const rows = [];
   for (let from = 0; ; from += pageSize) {
-    // eslint-disable-next-line no-await-in-loop
     const { data, error } = await supabase.rpc(fn, args).range(from, from + pageSize - 1);
     if (error) return { data: null, error };
     rows.push(...data);
