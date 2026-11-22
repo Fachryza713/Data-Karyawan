@@ -190,42 +190,6 @@ export function useKpiReview(reviewId) {
   return { ...state, reload: load };
 }
 
-/**
- * Ringkasan untuk beranda HR: periode aktif (atau periode selesai terbaru bila tidak ada yang aktif),
- * jumlah penilaian, yang sudah final, draft, dan rata-rata skor akhir yang final.
- */
-export function useKpiProgress() {
-  const [state, setState] = useState({ loading: true, error: null, period: null, total: 0, done: 0, draft: 0, average: null });
-  const load = useCallback(async () => {
-    setState((s) => ({ ...s, loading: true, error: null }));
-    const { data: periods, error } = await supabase.from('kpi_periods')
-      .select('id, name, status, deadline, closed_at')
-      .in('status', ['aktif', 'selesai'])
-      .order('start_date', { ascending: false });
-    const period = (periods ?? []).find((p) => p.status === 'aktif') ?? periods?.[0] ?? null;
-    if (error || !period) {
-      setState({ loading: false, error, period: null, total: 0, done: 0, draft: 0, average: null });
-      return;
-    }
-    const { data: reviews, error: revErr } = await supabase.from('kpi_reviews')
-      .select('status, final_score, reviewer_id').eq('period_id', period.id);
-    const rows = reviews ?? [];
-    const finals = rows.filter((r) => r.status === 'final');
-    const sum = finals.reduce((n, r) => n + Number(r.final_score), 0);
-    setState({
-      loading: false,
-      error: revErr,
-      period,
-      total: rows.length,
-      done: finals.length,
-      draft: rows.filter((r) => reviewStatusKey(r) === 'draft').length,
-      average: finals.length ? Math.round((sum / finals.length) * 10) / 10 : null,
-    });
-  }, []);
-  useEffect(() => { load(); }, [load]);
-  return { ...state, reload: load };
-}
-
 /** Hasil KPI final milik karyawan login (RLS: hanya miliknya dan hanya final), periode terbaru dulu. */
 export function useMyKpiResults(employeeId) {
   const [state, setState] = useState({ loading: true, error: null, rows: [], activePeriod: null });
