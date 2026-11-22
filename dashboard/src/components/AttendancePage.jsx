@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { LogIn, LogOut, MapPin, Plus } from 'lucide-react';
+import { MapPin, Plus } from 'lucide-react';
 import {
   PageHeader, Card, CardHeader, Badge, Button, Modal, Field, Segmented, Pagination, useToast, inputCls, cx,
 } from './ui';
+import ClockActions, { todayStatusText } from './ClockActions';
+import { useTodayAttendance, timeJakarta, longDateJakarta, clockInBadge, hhmm } from '../lib/useTodayAttendance';
 
 const INITIAL_LOG = [
   { date: '2026-02-24', day: 'Senin', in: '08:15', out: null, status: 'hadir', today: true },
@@ -110,9 +112,7 @@ function LeaveModal({ onClose, onSubmit }) {
 
 export default function AttendancePage() {
   const [now, setNow] = useState(new Date());
-  const [inRadius, setInRadius] = useState(true);
-  const [checkInTime, setCheckInTime] = useState('08:15');
-  const [checkOutTime, setCheckOutTime] = useState(null);
+  const att = useTodayAttendance();
   const [logData, setLogData] = useState(INITIAL_LOG);
   const [page, setPage] = useState(1);
   const [selectedMonth, setSelectedMonth] = useState('2026-02');
@@ -124,26 +124,10 @@ export default function AttendancePage() {
     return () => clearInterval(id);
   }, []);
 
-  const checkedIn = !!checkInTime;
-  const checkedOut = !!checkOutTime;
-  const hhmm = () => now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', hour12: false });
-
-  const updateToday = (patch) =>
-    setLogData((prev) => prev.map((r) => (r.today ? { ...r, ...patch } : r)));
-
-  const handleCheckIn = () => {
-    const t = hhmm();
-    setCheckInTime(t);
-    updateToday({ in: t });
-    toast(`Absen masuk tercatat ${t} WIB`);
-  };
-
-  const handleCheckOut = () => {
-    const t = hhmm();
-    setCheckOutTime(t);
-    updateToday({ out: t });
-    toast(`Absen pulang tercatat ${t} WIB`);
-  };
+  const { today, office, shift, loading } = att;
+  const inTime = timeJakarta(today?.clock_in_at);
+  const outTime = timeJakarta(today?.clock_out_at);
+  const inBadge = clockInBadge(today);
 
   const handleSubmitLeave = ({ type, start }) => {
     const label = LEAVE_TYPES.find((t) => t.value === type)?.label;
@@ -157,7 +141,7 @@ export default function AttendancePage() {
   const displayed = logData.slice((page - 1) * PER_PAGE, page * PER_PAGE);
   const from = (page - 1) * PER_PAGE + 1;
   const to = Math.min(page * PER_PAGE, logData.length);
-  const time = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+  const time = now.toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 
   return (
     <>
@@ -170,46 +154,41 @@ export default function AttendancePage() {
       {/* Presensi harian */}
       <Card className="grid gap-6 p-5 md:grid-cols-[1fr_auto] md:items-center sm:p-6">
         <div>
-          <p className="text-xs font-medium text-faint">Senin, 24 Februari 2026 · Shift 08:30–17:30</p>
+          <p className="text-xs font-medium text-faint">
+            {longDateJakarta(now)}
+            {shift && <> · Shift {shift.name} <span className="num">{hhmm(shift.start_time)}–{hhmm(shift.end_time)}</span></>}
+          </p>
           <p className="num mt-1 font-display text-4xl font-semibold tracking-tight sm:text-5xl" aria-live="off">
             {time}
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-[13px]">
-            <span className={cx('inline-flex items-center gap-1.5', inRadius ? 'text-muted' : 'text-danger')}>
+            <span className="inline-flex items-center gap-1.5 text-muted">
               <MapPin size={14} aria-hidden="true" />
-              {inRadius ? 'Head Office Jakarta · dalam radius' : 'Di luar radius kantor'}
+              {loading ? 'Memuat…' : office ? `${office.name} · radius ${office.radius_m} m` : 'Kantor belum diatur'}
             </span>
-            <button
-              type="button"
-              onClick={() => setInRadius((p) => !p)}
-              className="rounded text-xs text-faint underline decoration-dotted underline-offset-2 hover:text-fg"
-            >
-              Simulasi {inRadius ? 'di luar' : 'di dalam'} radius
-            </button>
+            {shift && <span className="text-faint">Toleransi terlambat <span className="num">{shift.late_tolerance_min}</span> menit</span>}
           </div>
+          {!loading && (
+            <p className="mt-2 flex flex-wrap items-center gap-2 text-sm font-medium" aria-live="polite">
+              {todayStatusText(att)}
+              {today?.status === 'pulang_cepat' && <Badge tone="warning">Pulang cepat</Badge>}
+            </p>
+          )}
         </div>
 
-        <div className="flex flex-col gap-2 sm:flex-row md:flex-col md:w-52">
-          {!checkedIn ? (
-            <Button size="lg" onClick={handleCheckIn} disabled={!inRadius}>
-              <LogIn size={18} aria-hidden="true" /> Absen masuk
-            </Button>
-          ) : (
-            <Button size="lg" onClick={handleCheckOut} disabled={checkedOut || !inRadius}>
-              <LogOut size={18} aria-hidden="true" /> {checkedOut ? 'Sudah absen pulang' : 'Absen pulang'}
-            </Button>
-          )}
+        <div className="flex flex-col gap-2 md:w-64">
+          <ClockActions att={att} onSuccess={toast} size="lg" />
           <dl className="grid grid-cols-2 gap-2 text-center text-[13px]">
             <div className="rounded-lg bg-subtle px-3 py-2">
               <dt className="text-xs text-faint">Masuk</dt>
-              <dd className="num font-semibold">{checkInTime ?? '—'}</dd>
+              <dd className="num font-semibold">{inTime ?? '—'}</dd>
+              {inBadge && <dd className="mt-1"><Badge tone={inBadge.tone}>{inBadge.label}</Badge></dd>}
             </div>
             <div className="rounded-lg bg-subtle px-3 py-2">
               <dt className="text-xs text-faint">Pulang</dt>
-              <dd className="num font-semibold">{checkOutTime ?? '—'}</dd>
+              <dd className="num font-semibold">{outTime ?? '—'}</dd>
             </div>
           </dl>
-          {!inRadius && <p className="text-xs text-danger">Absen hanya bisa dilakukan di dalam radius kantor.</p>}
         </div>
       </Card>
 

@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowRight, MapPin } from 'lucide-react';
-import { Card, Badge, Button, Eyebrow, cx } from './ui';
+import { MapPin } from 'lucide-react';
+import { Card, Badge, Eyebrow, useToast, cx } from './ui';
+import ClockActions, { todayStatusText } from './ClockActions';
+import { useTodayAttendance, timeJakarta, attendanceBadge, clockInBadge, hhmm } from '../lib/useTodayAttendance';
 
 const MONTH_STATS = [
   { label: 'Hadir', value: 19 },
@@ -11,13 +13,19 @@ const MONTH_STATS = [
 
 export default function AttendanceCard({ setActiveMenu, className }) {
   const [now, setNow] = useState(new Date());
+  const att = useTodayAttendance();
+  const [toast, toastNode] = useToast();
 
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(id);
   }, []);
 
-  const time = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', hour12: false });
+  const time = now.toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit', hour12: false });
+  const { today, office, shift, loading } = att;
+  const badge = clockInBadge(today) ?? attendanceBadge(today);
+  const inTime = timeJakarta(today?.clock_in_at);
+  const outTime = timeJakarta(today?.clock_out_at);
 
   return (
     <Card className={cx('flex flex-col', className)}>
@@ -28,25 +36,32 @@ export default function AttendanceCard({ setActiveMenu, className }) {
             {time} <span className="text-base font-medium text-faint">WIB</span>
           </p>
           <p className="mt-1 flex items-center gap-1.5 text-[13px] text-muted">
-            <MapPin size={14} aria-hidden="true" /> Head Office Jakarta · Shift 08:30–17:30
+            <MapPin size={14} aria-hidden="true" />
+            {loading ? 'Memuat…' : (
+              <>
+                {office?.name ?? 'Kantor belum diatur'} · {shift ? `Shift ${hhmm(shift.start_time)}–${hhmm(shift.end_time)}` : 'Shift belum diatur'}
+              </>
+            )}
           </p>
+          {!loading && <p className="mt-0.5 text-[13px] font-medium" aria-live="polite">{todayStatusText(att)}</p>}
         </div>
-        <Button onClick={() => setActiveMenu('kehadiran')}>
-          Absen pulang <ArrowRight size={16} aria-hidden="true" />
-        </Button>
+        <ClockActions att={att} onSuccess={toast} className="w-full sm:w-60" />
       </div>
 
       <dl className="mx-5 mt-5 grid grid-cols-2 overflow-hidden rounded-lg border border-line">
         <div className="border-r border-line px-4 py-3">
           <dt className="text-xs text-faint">Masuk</dt>
-          <dd className="mt-0.5 flex items-center gap-2">
-            <span className="num text-base font-semibold">08:15</span>
-            <Badge tone="success">Tepat waktu</Badge>
+          <dd className="mt-0.5 flex flex-wrap items-center gap-2">
+            {inTime ? <span className="num text-base font-semibold">{inTime}</span> : <span className="text-base font-semibold text-faint">Belum tercatat</span>}
+            {badge && <Badge tone={badge.tone}>{badge.label}</Badge>}
           </dd>
         </div>
         <div className="px-4 py-3">
           <dt className="text-xs text-faint">Pulang</dt>
-          <dd className="mt-0.5 text-base font-semibold text-faint">Belum tercatat</dd>
+          <dd className="mt-0.5 flex flex-wrap items-center gap-2">
+            {outTime ? <span className="num text-base font-semibold">{outTime}</span> : <span className="text-base font-semibold text-faint">Belum tercatat</span>}
+            {today?.status === 'pulang_cepat' && <Badge tone="warning">Pulang cepat</Badge>}
+          </dd>
         </div>
       </dl>
 
@@ -70,6 +85,7 @@ export default function AttendanceCard({ setActiveMenu, className }) {
           ))}
         </dl>
       </div>
+      {toastNode}
     </Card>
   );
 }
