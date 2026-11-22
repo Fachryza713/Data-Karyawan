@@ -60,7 +60,9 @@ export default function AttendanceCard({ setActiveMenu, className }) {
           <dt className="text-xs text-faint">Pulang</dt>
           <dd className="mt-0.5 flex flex-wrap items-center gap-2">
             {outTime ? <span className="num text-base font-semibold">{outTime}</span> : <span className="text-base font-semibold text-faint">Belum tercatat</span>}
-            {today?.status === 'pulang_cepat' && <Badge tone="warning">Pulang cepat</Badge>}
+            {outTime && (today.status === 'pulang_cepat'
+              ? <Badge tone="warning">Pulang cepat</Badge>
+              : <Badge tone="success">Sesuai jadwal</Badge>)}
           </dd>
         </div>
       </dl>
