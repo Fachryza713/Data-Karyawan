@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { MapPin, Plus } from 'lucide-react';
+import { MapPin, Plus, Briefcase } from 'lucide-react';
 import {
   PageHeader, Card, CardHeader, Badge, Button, Pagination, useToast, inputCls, cx,
 } from './ui';
-import ClockActions, { todayStatusText } from './ClockActions';
+import ClockActions, { todayStatusText, RemoteTodayNote } from './ClockActions';
 import LeaveRequestModal from './LeaveRequestModal';
 import MyRequestsCard from './MyRequestsCard';
 import { useLeaveTypes, useLeaveBalance, useMyRequests } from '../lib/leave';
@@ -79,7 +79,7 @@ export default function AttendancePage() {
   const [month, setMonth] = useState(months[0].value);
   const history = useMonthHistory(month);
   const [page, setPage] = useState(1);
-  const [showModal, setShowModal] = useState(false);
+  const [modalTab, setModalTab] = useState(null); // null | 'leave' | 'remote'
   const [toast, toastNode] = useToast();
   const leaveTypes = useLeaveTypes();
   const leaveBalance = useLeaveBalance();
@@ -101,7 +101,7 @@ export default function AttendancePage() {
   const inBadge = clockInBadge(today);
 
   const handleSubmitLeave = () => {
-    setShowModal(false);
+    setModalTab(null);
     refreshRequests('Pengajuan terkirim. Status bisa dipantau di daftar Pengajuan saya.');
   };
 
@@ -145,7 +145,16 @@ export default function AttendancePage() {
       <PageHeader
         title="Kehadiran & cuti"
         description="Presensi harian dan riwayat kehadiran Anda."
-        actions={<Button onClick={() => setShowModal(true)} disabled={leaveTypes.length === 0}><Plus size={16} aria-hidden="true" /> Ajukan cuti / izin</Button>}
+        actions={
+          <>
+            <Button variant="secondary" onClick={() => setModalTab('remote')}>
+              <Briefcase size={16} aria-hidden="true" /> Ajukan WFH / dinas luar
+            </Button>
+            <Button onClick={() => setModalTab('leave')} disabled={leaveTypes.length === 0}>
+              <Plus size={16} aria-hidden="true" /> Ajukan cuti / izin
+            </Button>
+          </>
+        }
       />
 
       {/* Presensi harian */}
@@ -165,6 +174,7 @@ export default function AttendancePage() {
             </span>
             {shift && <span className="text-faint">Toleransi terlambat <span className="num">{shift.late_tolerance_min}</span> menit</span>}
           </div>
+          {!loading && <RemoteTodayNote remote={att.remote} className="mt-3 max-w-md" />}
           {!loading && (
             <p className="mt-2 text-sm font-medium" aria-live="polite">{todayStatusText(att)}</p>
           )}
@@ -277,11 +287,12 @@ export default function AttendancePage() {
 
       <MyRequestsCard requests={myRequests} onChanged={refreshRequests} className="mt-5" />
 
-      {showModal && (
+      {modalTab && (
         <LeaveRequestModal
           types={leaveTypes}
           balance={leaveBalance.balance}
-          onClose={() => setShowModal(false)}
+          initialTab={modalTab}
+          onClose={() => setModalTab(null)}
           onSubmitted={handleSubmitLeave}
         />
       )}

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Loader2, Paperclip, X } from 'lucide-react';
+import { Loader2, Paperclip, X, CalendarDays, Briefcase } from 'lucide-react';
 import { Modal, Field, Segmented, Button, cx, inputCls } from './ui';
 import { FieldError } from './LoginPage';
 import { supabase } from '../lib/supabase';
@@ -26,13 +26,27 @@ function useWorkingDays(start, end) {
   return state;
 }
 
+const TABS = [
+  { id: 'leave', label: 'Cuti / izin', icon: CalendarDays },
+  { id: 'remote', label: 'WFH / dinas luar', icon: Briefcase },
+];
+
+const REMOTE_KINDS = [
+  { value: 'wfh', label: 'WFH' },
+  { value: 'dinas', label: 'Dinas luar' },
+];
+
 /**
- * Form pengajuan cuti/sakit/izin khusus.
- * `types` dari leave_types, `balance` dari useLeaveBalance(). onSubmitted() setelah tersimpan.
+ * Form pengajuan: tab "Cuti / izin" (cuti/sakit/izin khusus) dan tab "WFH / dinas luar".
+ * `types` dari leave_types, `balance` dari useLeaveBalance(). `initialTab` = 'leave' | 'remote'.
+ * onSubmitted() setelah tersimpan.
  */
-export default function LeaveRequestModal({ types, balance, onClose, onSubmitted }) {
+export default function LeaveRequestModal({ types, balance, initialTab = 'leave', onClose, onSubmitted }) {
   const { profile } = useAuth();
+  const [tab, setTab] = useState(initialTab);
   const [code, setCode] = useState('tahunan');
+  const [remoteKind, setRemoteKind] = useState('wfh');
+  const [destination, setDestination] = useState('');
   const [start, setStart] = useState('');
   const [end, setEnd] = useState('');
   const [reason, setReason] = useState('');
@@ -41,10 +55,14 @@ export default function LeaveRequestModal({ types, balance, onClose, onSubmitted
   const [busy, setBusy] = useState(false);
   const fileRef = useRef(null);
 
-  const type = types.find((t) => t.code === code);
+  const isRemote = tab === 'remote';
+  const isDinas = isRemote && remoteKind === 'dinas';
+  // Tab WFH/dinas: tanpa jenis cuti, jadi kuota & lampiran otomatis tidak berlaku.
+  const type = isRemote ? undefined : types.find((t) => t.code === code);
   const { days, loading: countingDays } = useWorkingDays(start, end || start);
   const today = isoJakarta();
-  const minStart = addDays(today, -7);
+  // Cuti: mundur maksimal 7 hari. WFH/dinas: paling lambat H-1, jadi mulai minimal besok.
+  const minStart = isRemote ? addDays(today, 1) : addDays(today, -7);
 
   const showAttachment = type && !type.deducts_quota;
   const attachmentRequired = type?.requires_attachment_after_days != null && days != null
@@ -67,9 +85,14 @@ export default function LeaveRequestModal({ types, balance, onClose, onSubmitted
   const validate = () => {
     const e = {};
     if (!start) e.start = 'Pilih tanggal mulai.';
-    else if (start < minStart) e.start = 'Tanggal mulai paling lambat 7 hari ke belakang.';
+    else if (start < minStart) {
+      e.start = isRemote
+        ? 'WFH dan dinas luar diajukan paling lambat H-1. Tanggal mulai minimal besok.'
+        : 'Tanggal mulai paling lambat 7 hari ke belakang.';
+    }
     if (end && start && end < start) e.end = 'Tanggal selesai tidak boleh sebelum tanggal mulai.';
     if (!reason.trim()) e.reason = 'Tuliskan alasan singkat.';
+    if (isDinas && !destination.trim()) e.destination = 'Isi lokasi tujuan dinas.';
     if (days === 0) e.end = 'Rentang tanggal tidak berisi hari kerja.';
     if (attachmentRequired && !file) e.file = 'Sakit lebih dari 1 hari wajib melampirkan surat dokter.';
     if (overQuota) e.form = `Sisa kuota tidak cukup. Tersedia ${balance.available} hari kerja.`;
@@ -96,9 +119,17 @@ export default function LeaveRequestModal({ types, balance, onClose, onSubmitted
       }
     }
 
-    const { error } = await supabase.rpc('submit_leave', {
-      p_type: code, p_start: start, p_end: end || start, p_reason: reason.trim(), p_attachment_path: path,
-    });
+    const { error } = isRemote
+      ? await supabase.rpc('submit_remote', {
+        p_kind: remoteKind,
+        p_start: start,
+        p_end: end || start,
+        p_reason: reason.trim(),
+        p_destination: isDinas ? destination.trim() : null,
+      })
+      : await supabase.rpc('submit_leave', {
+        p_type: code, p_start: start, p_end: end || start, p_reason: reason.trim(), p_attachment_path: path,
+      });
     setBusy(false);
     if (error) {
       setErrors({ form: rpcMessage(error, 'Pengajuan gagal dikirim. Coba lagi.') });
@@ -109,7 +140,7 @@ export default function LeaveRequestModal({ types, balance, onClose, onSubmitted
 
   return (
     <Modal
-      title="Ajukan cuti atau izin"
+      title={isRemote ? 'Ajukan WFH atau dinas luar' : 'Ajukan cuti atau izin'}
       description="Pengajuan dikirim ke HR untuk disetujui."
       onClose={busy ? () => {} : onClose}
       footer={
@@ -122,16 +153,54 @@ export default function LeaveRequestModal({ types, balance, onClose, onSubmitted
         </>
       }
     >
-      <form id="leave-form" onSubmit={submit} className="space-y-4" noValidate>
+      <div role="tablist" aria-label="Kategori pengajuan" className="-mt-1 mb-5 flex gap-1 overflow-x-auto border-b border-line">
+        {TABS.map((t) => {
+          const Icon = t.icon;
+          const selected = tab === t.id;
+          return (
+            <button
+              key={t.id}
+              type="button"
+              role="tab"
+              id={`request-tab-${t.id}`}
+              aria-selected={selected}
+              aria-controls="leave-form"
+              disabled={busy}
+              onClick={() => { setTab(t.id); setErrors({}); }}
+              className={cx(
+                '-mb-px inline-flex h-10 items-center gap-2 whitespace-nowrap border-b-2 px-3 text-sm transition-colors',
+                selected ? 'border-accent font-medium text-fg' : 'border-transparent text-muted hover:text-fg',
+              )}
+            >
+              <Icon size={16} strokeWidth={selected ? 2.1 : 1.8} aria-hidden="true" />
+              {t.label}
+            </button>
+          );
+        })}
+      </div>
+
+      <form
+        id="leave-form" onSubmit={submit} className="space-y-4" noValidate
+        role="tabpanel" aria-labelledby={`request-tab-${tab}`}
+      >
         {errors.form && <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-[13px] text-danger">{errors.form}</p>}
 
         <Field label="Jenis">
-          <Segmented
-            name="Jenis pengajuan"
-            options={types.map((t) => ({ value: t.code, label: t.name }))}
-            value={code}
-            onChange={(v) => { setCode(v); setErrors({}); }}
-          />
+          {isRemote ? (
+            <Segmented
+              name="Jenis izin kerja di luar kantor"
+              options={REMOTE_KINDS}
+              value={remoteKind}
+              onChange={(v) => { setRemoteKind(v); setErrors({}); }}
+            />
+          ) : (
+            <Segmented
+              name="Jenis pengajuan"
+              options={types.map((t) => ({ value: t.code, label: t.name }))}
+              value={code}
+              onChange={(v) => { setCode(v); setErrors({}); }}
+            />
+          )}
         </Field>
 
         <div className="grid gap-4 sm:grid-cols-2">
@@ -172,19 +241,42 @@ export default function LeaveRequestModal({ types, balance, onClose, onSubmitted
               ) : 'Kuota cuti tahunan belum tersedia. Hubungi HR.'}
             </p>
           )}
-          {code === 'sakit' && <p className="mt-1 text-muted">Lebih dari 1 hari kerja wajib melampirkan surat dokter.</p>}
+          {!isRemote && code === 'sakit' && <p className="mt-1 text-muted">Lebih dari 1 hari kerja wajib melampirkan surat dokter.</p>}
+          {isRemote && (
+            <p className="mt-1 text-muted">
+              Diajukan paling lambat H-1 dan tidak mengurangi kuota cuti. Setelah disetujui, absen di luar radius kantor
+              terbuka hanya pada tanggal tersebut.
+            </p>
+          )}
         </div>
 
         <Field label="Alasan" required htmlFor="leave-reason" aside={`${reason.length}/500`}>
           <textarea
             id="leave-reason" rows={3} value={reason} maxLength={500}
             onChange={(e) => { setReason(e.target.value); clear('reason'); }}
-            placeholder="Contoh: acara keluarga di luar kota"
+            placeholder={
+              !isRemote ? 'Contoh: acara keluarga di luar kota'
+                : isDinas ? 'Contoh: presentasi proyek ke klien'
+                  : 'Contoh: menyelesaikan laporan bulanan dari rumah'
+            }
             aria-invalid={!!errors.reason || undefined}
             className={cx(inputCls, 'h-auto resize-none py-2', errors.reason && 'border-danger')}
           />
           <FieldError>{errors.reason}</FieldError>
         </Field>
+
+        {isDinas && (
+          <Field label="Lokasi tujuan" required htmlFor="remote-destination" aside={`${destination.length}/200`}>
+            <input
+              id="remote-destination" type="text" value={destination} maxLength={200}
+              onChange={(e) => { setDestination(e.target.value); clear('destination'); }}
+              placeholder="Contoh: kantor klien PT Sinar Jaya, Bandung"
+              aria-invalid={!!errors.destination || undefined}
+              className={cx(inputCls, errors.destination && 'border-danger')}
+            />
+            <FieldError>{errors.destination}</FieldError>
+          </Field>
+        )}
 
         {showAttachment && (
           <Field
