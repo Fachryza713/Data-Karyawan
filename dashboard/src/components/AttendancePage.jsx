@@ -1,21 +1,18 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { MapPin, Plus } from 'lucide-react';
 import {
-  PageHeader, Card, CardHeader, Badge, Button, Modal, Field, Segmented, Pagination, useToast, inputCls, cx,
+  PageHeader, Card, CardHeader, Badge, Button, Pagination, useToast, inputCls, cx,
 } from './ui';
 import ClockActions, { todayStatusText } from './ClockActions';
+import LeaveRequestModal from './LeaveRequestModal';
+import MyRequestsCard from './MyRequestsCard';
+import { useLeaveTypes, useLeaveBalance, useMyRequests } from '../lib/leave';
 import {
   useTodayAttendance, timeJakarta, longDateJakarta, clockInBadge, attendanceBadge, hhmm,
 } from '../lib/useTodayAttendance';
 import { isoJakarta, addDays, weekdayName, isWeekendIso, MODE_LABEL } from '../lib/attendance';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
-
-const LEAVE_TYPES = [
-  { value: 'cuti', label: 'Cuti tahunan' },
-  { value: 'sakit', label: 'Sakit' },
-  { value: 'izin', label: 'Izin khusus' },
-];
 
 const PER_PAGE = 8;
 
@@ -74,72 +71,6 @@ function HistoryStatus({ day }) {
   );
 }
 
-function LeaveModal({ onClose, onSubmit }) {
-  const [type, setType] = useState('cuti');
-  const [start, setStart] = useState('');
-  const [end, setEnd] = useState('');
-  const [reason, setReason] = useState('');
-  const [errors, setErrors] = useState({});
-
-  const submit = (e) => {
-    e.preventDefault();
-    const next = {};
-    if (!start) next.start = 'Pilih tanggal mulai.';
-    if (end && start && end < start) next.end = 'Tanggal selesai tidak boleh sebelum tanggal mulai.';
-    if (!reason.trim()) next.reason = 'Tuliskan alasan singkat.';
-    setErrors(next);
-    if (Object.keys(next).length) return;
-    onSubmit({ type, start, end, reason });
-  };
-
-  return (
-    <Modal
-      title="Ajukan cuti atau izin"
-      description="Pengajuan dikirim ke atasan langsung dan HR."
-      onClose={onClose}
-      footer={
-        <>
-          <Button variant="secondary" onClick={onClose}>Batal</Button>
-          <Button type="submit" form="leave-form">Kirim pengajuan</Button>
-        </>
-      }
-    >
-      <form id="leave-form" onSubmit={submit} className="space-y-4" noValidate>
-        <Field label="Jenis">
-          <Segmented name="Jenis pengajuan" options={LEAVE_TYPES} value={type} onChange={setType} />
-        </Field>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Mulai" required htmlFor="leave-start">
-            <input
-              id="leave-start" type="date" value={start} onChange={(e) => setStart(e.target.value)}
-              aria-invalid={!!errors.start} className={cx(inputCls, errors.start && 'border-danger')}
-            />
-            {errors.start && <p className="mt-1.5 text-xs text-danger">{errors.start}</p>}
-          </Field>
-          <Field label="Selesai" htmlFor="leave-end" aside="Opsional">
-            <input
-              id="leave-end" type="date" value={end} min={start || undefined} onChange={(e) => setEnd(e.target.value)}
-              aria-invalid={!!errors.end} className={cx(inputCls, errors.end && 'border-danger')}
-            />
-            {errors.end && <p className="mt-1.5 text-xs text-danger">{errors.end}</p>}
-          </Field>
-        </div>
-        <Field label="Alasan" required htmlFor="leave-reason">
-          <textarea
-            id="leave-reason" rows={3} value={reason} onChange={(e) => setReason(e.target.value)}
-            placeholder="Contoh: acara keluarga di luar kota"
-            aria-invalid={!!errors.reason}
-            className={cx(inputCls, 'h-auto resize-none py-2', errors.reason && 'border-danger')}
-          />
-          {errors.reason && <p className="mt-1.5 text-xs text-danger">{errors.reason}</p>}
-        </Field>
-        {type === 'cuti' && <p className="text-[13px] text-muted">Sisa cuti tahunan Anda: <span className="num font-medium text-fg">8 hari</span>.</p>}
-        {type === 'sakit' && <p className="text-[13px] text-muted">Lebih dari 1 hari wajib melampirkan surat dokter.</p>}
-      </form>
-    </Modal>
-  );
-}
-
 export default function AttendancePage() {
   const [now, setNow] = useState(new Date());
   const att = useTodayAttendance();
@@ -150,6 +81,14 @@ export default function AttendancePage() {
   const [page, setPage] = useState(1);
   const [showModal, setShowModal] = useState(false);
   const [toast, toastNode] = useToast();
+  const leaveTypes = useLeaveTypes();
+  const leaveBalance = useLeaveBalance();
+  const myRequests = useMyRequests();
+  const refreshRequests = (msg) => {
+    myRequests.reload();
+    leaveBalance.reload();
+    if (msg) toast(msg);
+  };
 
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 1000);
@@ -163,7 +102,7 @@ export default function AttendancePage() {
 
   const handleSubmitLeave = () => {
     setShowModal(false);
-    toast('Pengajuan terkirim. Status bisa dipantau di log.');
+    refreshRequests('Pengajuan terkirim. Status bisa dipantau di daftar Pengajuan saya.');
   };
 
   // Hari-hari bulan terpilih sampai hari ini (terbaru dulu), digabung dengan data DB.
@@ -206,7 +145,7 @@ export default function AttendancePage() {
       <PageHeader
         title="Kehadiran & cuti"
         description="Presensi harian dan riwayat kehadiran Anda."
-        actions={<Button onClick={() => setShowModal(true)}><Plus size={16} aria-hidden="true" /> Ajukan cuti / izin</Button>}
+        actions={<Button onClick={() => setShowModal(true)} disabled={leaveTypes.length === 0}><Plus size={16} aria-hidden="true" /> Ajukan cuti / izin</Button>}
       />
 
       {/* Presensi harian */}
@@ -336,7 +275,16 @@ export default function AttendancePage() {
         />
       </Card>
 
-      {showModal && <LeaveModal onClose={() => setShowModal(false)} onSubmit={handleSubmitLeave} />}
+      <MyRequestsCard requests={myRequests} onChanged={refreshRequests} className="mt-5" />
+
+      {showModal && (
+        <LeaveRequestModal
+          types={leaveTypes}
+          balance={leaveBalance.balance}
+          onClose={() => setShowModal(false)}
+          onSubmitted={handleSubmitLeave}
+        />
+      )}
       {toastNode}
     </>
   );
