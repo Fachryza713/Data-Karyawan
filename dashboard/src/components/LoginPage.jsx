@@ -31,9 +31,7 @@ export const dict = {
     },
     showPw: 'Tampilkan kata sandi',
     hidePw: 'Sembunyikan kata sandi',
-    footerCopy: '© 2026 Blue Rose Tech',
-    helpdesk: 'Helpdesk IT & HR',
-    privacy: 'Privasi',
+    footerCopy: `© ${new Date().getFullYear()} Blue Rose Tech`,
     language: 'Bahasa',
     themeLight: 'Gunakan tema terang',
     themeDark: 'Gunakan tema gelap',
@@ -62,9 +60,7 @@ export const dict = {
     },
     showPw: 'Show password',
     hidePw: 'Hide password',
-    footerCopy: '© 2026 Blue Rose Tech',
-    helpdesk: 'IT & HR helpdesk',
-    privacy: 'Privacy',
+    footerCopy: `© ${new Date().getFullYear()} Blue Rose Tech`,
     language: 'Language',
     themeLight: 'Use light theme',
     themeDark: 'Use dark theme',
@@ -180,8 +176,6 @@ export function AuthLayout({ t, lang, setLang, isDark, toggleTheme, children }) 
 
         <footer className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1 text-xs text-faint lg:justify-end">
           <span className="lg:hidden">{t.footerCopy}</span>
-          <a href="#" className="hover:text-fg">{t.helpdesk}</a>
-          <a href="#" className="hover:text-fg">{t.privacy}</a>
         </footer>
       </div>
     </div>

@@ -157,7 +157,6 @@ export default function KpiReviewForm() {
     if (data.loading || !review || loadedFor === reviewId) return;
     applyData(review);
     setLoadedFor(reviewId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data.loading, review, reviewId, loadedFor]);
 
   const parsed = useMemo(() => items.map((i) => ({ weight: i.weight, score: parseScore(i.score) })), [items]);
