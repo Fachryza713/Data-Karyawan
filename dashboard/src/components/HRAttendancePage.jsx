@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Download, Clock, RefreshCw, Paperclip, Check, X, MapPin } from 'lucide-react';
 import {
   PageHeader, Card, CardHeader, Badge, Button, IconButton, Modal, Avatar, Eyebrow, Pagination, useToast, inputCls, cx,
@@ -75,6 +76,7 @@ function StatusBadge({ row }) {
 const typeTone = (r) => (r.type === 'sakit' ? 'warning' : r.typeLabel === 'Izin khusus' ? 'neutral' : 'accent');
 
 export default function HRAttendancePage() {
+  const navigate = useNavigate();
   const [requests, setRequests] = useState(INITIAL_REQUESTS);
   const [filterTab, setFilterTab] = useState('semua');
   const [page, setPage] = useState(1);
@@ -116,7 +118,7 @@ export default function HRAttendancePage() {
         description="Senin, 24 Februari 2026 · Head Office Jakarta"
         actions={
           <>
-            <Button variant="secondary"><Clock size={16} aria-hidden="true" /> Atur shift</Button>
+            <Button variant="secondary" onClick={() => navigate('/hr/pengaturan/shift')}><Clock size={16} aria-hidden="true" /> Atur shift</Button>
             <Button variant="secondary"><Download size={16} aria-hidden="true" /> Ekspor</Button>
           </>
         }
