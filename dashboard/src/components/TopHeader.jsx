@@ -1,9 +1,10 @@
 import React from 'react';
-import { Search, Bell, Sun, Moon, Menu } from 'lucide-react';
+import { Search, Sun, Moon, Menu } from 'lucide-react';
 import { Avatar, IconButton } from './ui';
+import NotificationBell from './NotificationBell';
 
 /* Header generik: tombol menu (mobile), pencarian, tema, notifikasi, identitas pengguna. */
-export default function TopHeader({ isDark, onToggleTheme, onOpenMenu, userName, userRole, profilePhoto, searchPlaceholder, notifCount = 0 }) {
+export default function TopHeader({ isDark, onToggleTheme, onOpenMenu, userName, userRole, profilePhoto, searchPlaceholder }) {
   return (
     <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-line bg-surface px-4 sm:px-6">
       <IconButton label="Buka menu" onClick={onOpenMenu} className="-ml-1.5 lg:hidden">
@@ -25,12 +26,7 @@ export default function TopHeader({ isDark, onToggleTheme, onOpenMenu, userName,
         <IconButton label={isDark ? 'Gunakan tema terang' : 'Gunakan tema gelap'} onClick={onToggleTheme}>
           {isDark ? <Sun size={18} /> : <Moon size={18} />}
         </IconButton>
-        <IconButton label={notifCount ? `Notifikasi, ${notifCount} belum dibaca` : 'Notifikasi'}>
-          <Bell size={18} />
-          {notifCount > 0 && (
-            <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-danger-solid ring-2 ring-surface" aria-hidden="true" />
-          )}
-        </IconButton>
+        <NotificationBell />
 
         <div className="ml-2 flex items-center gap-3 border-l border-line pl-3">
           <div className="hidden text-right leading-tight md:block">
