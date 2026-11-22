@@ -13,15 +13,27 @@ Aplikasi web **Human Resource Information System** dengan dua portal: **Portal K
 
 ## Screenshot
 
-Simpan gambar di `docs/screenshots/` dengan nama berikut, lalu gambar otomatis tampil di sini.
+Diambil dari data demo (`supabase/seed-demo.sql`).
 
-| Portal Karyawan | Portal HR |
+### Portal Karyawan
+
+| Beranda | Kehadiran & cuti |
 | --- | --- |
-| ![Beranda karyawan](docs/screenshots/karyawan-beranda.png) | ![Ringkasan HR](docs/screenshots/hr-beranda.png) |
-| ![Kehadiran & cuti](docs/screenshots/karyawan-kehadiran.png) | ![Approval pengajuan](docs/screenshots/hr-kehadiran.png) |
-| ![Slip gaji](docs/screenshots/karyawan-slip.png) | ![Payroll](docs/screenshots/hr-payroll.png) |
-| ![Hasil KPI](docs/screenshots/karyawan-kinerja.png) | ![Penilaian KPI](docs/screenshots/hr-kpi.png) |
-| ![Mode gelap di HP](docs/screenshots/karyawan-mobile-dark.png) | ![Notifikasi](docs/screenshots/hr-notifikasi.png) |
+| ![Beranda karyawan](docs/screenshots/karyawan-beranda.png) | ![Kehadiran & cuti](docs/screenshots/karyawan-kehadiran.png) |
+| **Slip gaji** | **Kinerja (KPI)** |
+| ![Slip gaji](docs/screenshots/karyawan-slip.png) | ![Hasil KPI](docs/screenshots/karyawan-kinerja.png) |
+
+<p align="center"><img src="docs/screenshots/karyawan-mobile-dark.png" alt="Beranda karyawan di HP, mode gelap" width="300"></p>
+
+### Portal HR
+
+| Ringkasan | Notifikasi |
+| --- | --- |
+| ![Ringkasan HR](docs/screenshots/hr-beranda.png) | ![Notifikasi](docs/screenshots/hr-notifikasi.png) |
+| **Data karyawan** | **Approval pengajuan** |
+| ![Data karyawan](docs/screenshots/hr-karyawan.png) | ![Approval pengajuan](docs/screenshots/hr-kehadiran.png) |
+| **Payroll** | **Penilaian KPI** |
+| ![Payroll](docs/screenshots/hr-payroll.png) | ![Penilaian KPI](docs/screenshots/hr-kpi.png) |
 
 ## Fitur per role
 
@@ -121,7 +133,7 @@ flowchart LR
 | KPI | `kpi_templates`, `kpi_indicators`, `kpi_periods`, `kpi_reviews`, `kpi_scores` |
 | Sistem | `notifications`, `audit_logs` |
 
-Semua migrasi ada di [`supabase/migrations`](supabase/migrations). Detail kolom dan aturan bisnis ada di [PRD](PRD%20—%20HRIS%20Blue%20Rose%20Tech.md).
+Skema, RLS, RPC, dan trigger ada di [`supabase/migrations`](supabase/migrations) (urut waktu). Database bisa dibuat ulang dari nol dengan `npx supabase db reset`.
 
 ### Keamanan & uji RLS
 
@@ -201,13 +213,15 @@ Skrip frontend (di `dashboard/`): `npm run dev`, `npm run build`, `npm run previ
 ```bash
 npx supabase login
 npx supabase link --project-ref <project-ref>
-npx supabase db push                                         # semua migrasi
+npx supabase db push --remote                                # semua migrasi
 npx supabase db query --remote -f supabase/seed.sql          # master data
 npx supabase db query --remote -f supabase/seed-demo.sql     # data demo (opsional)
 npx supabase functions deploy invite-employee set-employee-active
 ```
 
 Edge Functions memakai `SUPABASE_URL`, `SUPABASE_ANON_KEY`, dan `SUPABASE_SERVICE_ROLE_KEY` yang otomatis tersedia di Supabase. Tidak ada secret yang perlu ditambahkan.
+
+**Menyegarkan data demo.** `pg_cron` menandai alpa setiap hari untuk karyawan yang tidak absen, termasuk karyawan fiktif. Jalankan ulang `seed-demo.sql` kapan saja. Seed ini aman diulang: data tidak terduplikasi, dan riwayat absen dua bulan terakhir diisi ulang.
 
 ### 2. Vercel
 
@@ -237,25 +251,27 @@ Tautan reset kata sandi dan undangan karyawan mengarah ke `/update-password`. Ka
 
 ```text
 .
-├── dashboard/                   # Frontend React + Vite (root project Vercel)
-│   ├── public/assets/           # Logo
+├── dashboard/                   # Frontend React + Vite (Root Directory di Vercel)
+│   ├── public/assets/           # Logo (favicon, sidebar, login)
 │   ├── src/
-│   │   ├── App.jsx              # Portal Karyawan (/app/*)
-│   │   ├── AppRouter.jsx        # Routing per role
-│   │   ├── components/          # Halaman & kartu portal karyawan, komponen UI bersama (ui.jsx)
-│   │   │   └── hr/              # Halaman Portal HR (karyawan, payroll, KPI, pengaturan, beranda)
+│   │   ├── main.jsx             # Entry React
+│   │   ├── AppRouter.jsx        # Routing per role (/login, /app/*, /hr/*)
+│   │   ├── App.jsx              # Portal Karyawan
+│   │   ├── components/          # Halaman & kartu Portal Karyawan, komponen UI bersama (ui.jsx)
+│   │   │   └── hr/              # Halaman Portal HR (beranda, karyawan, payroll, KPI, pengaturan)
 │   │   ├── context/             # AuthContext (sesi + profil)
 │   │   └── lib/                 # Klien Supabase, hook data, helper format per modul
-│   ├── eslint.config.js
-│   ├── .prettierrc.json
-│   └── vercel.json
+│   ├── .env.example             # Contoh VITE_SUPABASE_URL & VITE_SUPABASE_ANON_KEY
+│   ├── eslint.config.js         # ESLint 9 (flat config)
+│   ├── .prettierrc.json         # Prettier
+│   ├── tailwind.config.js       # Design token (warna lewat CSS variable, dark mode)
+│   └── vercel.json              # Rewrite SPA, cache aset, header keamanan
 ├── supabase/
 │   ├── migrations/              # Skema, RLS, RPC, trigger (urut waktu)
-│   ├── functions/               # Edge Functions (invite-employee, set-employee-active)
-│   ├── tests/rls.sql            # Audit Row Level Security
-│   ├── seed.sql                 # Master data (divisi, jabatan, kantor, shift, libur, contoh KPI)
-│   ├── seed-demo.sql            # Data demo fiktif
-│   └── config.toml              # Konfigurasi Supabase lokal
-├── docs/screenshots/            # Screenshot untuk README
-└── PRD — HRIS Blue Rose Tech.md # Product Requirements Document
+│   ├── functions/               # Edge Functions: invite-employee, set-employee-active, _shared
+│   ├── tests/rls.sql            # Audit Row Level Security (selalu rollback)
+│   ├── seed.sql                 # Master data: divisi, jabatan, kantor, shift, libur, contoh KPI
+│   ├── seed-demo.sql            # Akun demo + data demo fiktif
+│   └── config.toml              # Konfigurasi Supabase lokal (Auth URL, seed)
+└── docs/screenshots/            # Screenshot untuk README
 ```
