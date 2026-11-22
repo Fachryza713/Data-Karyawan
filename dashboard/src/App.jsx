@@ -52,7 +52,6 @@ export default function EmployeePortal({ isDark, toggleTheme }) {
           userRole={profileSubtitle(profile)}
           profilePhoto={profile.photo_url}
           searchPlaceholder="Cari kebijakan, formulir, dokumen"
-          notifCount={2}
         />
         <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6 lg:py-8">
           {activeMenu === 'profil' ? (
