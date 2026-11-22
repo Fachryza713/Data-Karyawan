@@ -6,11 +6,14 @@ import {
 import HRAttendancePage from './HRAttendancePage';
 import EmployeesModule from './hr/EmployeesModule';
 import SettingsPage from './hr/SettingsPage';
+import PayrollModule from './hr/PayrollModule';
 import Sidebar from './Sidebar';
 import TopHeader from './TopHeader';
 import { PageHeader, Card, CardHeader, Button, Badge, Eyebrow, cx } from './ui';
 import { useAuth, profileSubtitle } from '../context/AuthContext';
 import { usePendingRequestCount } from '../lib/leave';
+import { RUN_STATUS, periodMonth, usePayrollRuns } from '../lib/payroll';
+import { formatRupiah } from '../lib/hr';
 
 const hrMenu = [
   { id: 'beranda', label: 'Beranda', icon: Home },
@@ -42,6 +45,30 @@ function Stat({ label, value, unit, note, onClick }) {
   );
 }
 
+/** Kartu "Payroll <bulan>": status run terbaru (hr_payroll_runs, urut periode terbaru). */
+function PayrollStat({ go }) {
+  const { loading, rows } = usePayrollRuns();
+  const latest = rows[0];
+  if (!latest) {
+    return (
+      <Stat
+        label="Payroll"
+        value="—"
+        note={loading ? 'Memuat…' : 'Belum ada payroll'}
+        onClick={() => go('penggajian')}
+      />
+    );
+  }
+  return (
+    <Stat
+      label={`Payroll ${periodMonth(latest.period)}`}
+      value={RUN_STATUS[latest.status].label}
+      note={`${formatRupiah(latest.total_net)} · ${latest.employee_count} karyawan`}
+      onClick={() => go(`penggajian/${latest.period}`)}
+    />
+  );
+}
+
 function HRHome({ go }) {
   const tasks = [
     { label: 'Pengajuan cuti & izin sakit', detail: 'Batas verifikasi hari ini 17:00', count: 5, tone: 'warning', to: 'kehadiran' },
@@ -68,7 +95,7 @@ function HRHome({ go }) {
           <Stat label="Karyawan aktif" value="128" note="6 divisi · 18 jabatan" onClick={() => go('karyawan')} />
           <Stat label="Hadir hari ini" value="118" unit="/ 128" note="92% tingkat kehadiran" onClick={() => go('kehadiran')} />
           <Stat label="Cuti menunggu" value="5" note="Perlu persetujuan" onClick={() => go('kehadiran')} />
-          <Stat label="Payroll Februari" value="85%" note="Rilis 27 Feb" onClick={() => go('penggajian')} />
+          <PayrollStat go={go} />
         </div>
       </Card>
 
@@ -232,6 +259,8 @@ export default function HRDashboard({ isDark, toggleTheme }) {
             <EmployeesModule />
           ) : activeHrTab === 'kehadiran' ? (
             <HRAttendancePage onRequestsChanged={reloadPendingCount} />
+          ) : activeHrTab === 'penggajian' ? (
+            <PayrollModule />
           ) : (
             <HRPlaceholder label={current.label} go={setActiveHrTab} />
           )}
