@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import HRAttendancePage from './HRAttendancePage';
 import EmployeesModule from './hr/EmployeesModule';
+import SettingsPage from './hr/SettingsPage';
 import Sidebar from './Sidebar';
 import TopHeader from './TopHeader';
 import { PageHeader, Card, CardHeader, Button, Badge, Eyebrow, cx } from './ui';
@@ -169,7 +170,8 @@ export default function HRDashboard({ isDark, toggleTheme }) {
   const navigate = useNavigate();
   const { '*': sub = '' } = useParams();
   const section = sub.split('/')[0];
-  const activeHrTab = hrMenu.some((m) => m.id === section) ? section : 'beranda';
+  const isSettings = section === 'pengaturan';
+  const activeHrTab = hrMenu.some((m) => m.id === section) ? section : isSettings ? null : 'beranda';
   const setActiveHrTab = (id) => navigate(id === 'beranda' ? '/hr' : `/hr/${id}`);
   const [menuOpen, setMenuOpen] = useState(false);
   const current = hrMenu.find((m) => m.id === activeHrTab);
@@ -192,9 +194,14 @@ export default function HRDashboard({ isDark, toggleTheme }) {
         extra={
           <button
             type="button"
-            className="flex h-9 w-full items-center gap-3 rounded-lg px-3 text-sm text-muted transition-colors hover:bg-subtle hover:text-fg"
+            onClick={() => { navigate('/hr/pengaturan'); setMenuOpen(false); }}
+            aria-current={isSettings ? 'page' : undefined}
+            className={cx(
+              'flex h-9 w-full items-center gap-3 rounded-lg px-3 text-sm transition-colors',
+              isSettings ? 'bg-accent-soft font-medium text-accent-text' : 'text-muted hover:bg-subtle hover:text-fg',
+            )}
           >
-            <Settings size={18} strokeWidth={1.8} aria-hidden="true" />
+            <Settings size={18} strokeWidth={isSettings ? 2.1 : 1.8} aria-hidden="true" />
             Pengaturan
           </button>
         }
@@ -211,7 +218,9 @@ export default function HRDashboard({ isDark, toggleTheme }) {
           notifCount={5}
         />
         <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6 lg:py-8">
-          {activeHrTab === 'beranda' ? (
+          {isSettings ? (
+            <SettingsPage tab={sub.split('/')[1]} />
+          ) : activeHrTab === 'beranda' ? (
             <HRHome go={setActiveHrTab} />
           ) : activeHrTab === 'karyawan' ? (
             <EmployeesModule />
