@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Upload, Lock, Loader2 } from 'lucide-react';
 import { PageHeader, Card, CardHeader, Button, Field, Segmented, Avatar, Badge, useToast, inputCls, cx } from './ui';
 import { FieldError } from './LoginPage';
@@ -36,9 +37,18 @@ const Locked = () => (
   <Badge className="gap-1"><Lock size={11} aria-hidden="true" /> Diatur HR</Badge>
 );
 
-function ReadOnlyField({ id, label, value }) {
+/* Field organisasi selalu read-only. Karyawan melihat badge "Diatur HR"; HR mendapat tautan
+   `editHref` ke halaman detail dirinya di modul Data karyawan. */
+function ReadOnlyField({ id, label, value, editHref }) {
+  const aside = editHref ? (
+    <Link to={editHref} aria-label={`Ubah ${label} di Data karyawan`} className="font-medium text-accent-text hover:underline">
+      Ubah di Data karyawan
+    </Link>
+  ) : (
+    <Locked />
+  );
   return (
-    <Field label={label} htmlFor={id} aside={<Locked />}>
+    <Field label={label} htmlFor={id} aside={aside}>
       <input id={id} type="text" value={value || '—'} readOnly className={inputCls} />
     </Field>
   );
@@ -52,6 +62,8 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [photoBusy, setPhotoBusy] = useState(false);
   const [toast, toastNode] = useToast();
+  const isHr = profile.role === 'hr';
+  const orgEditHref = isHr ? `/hr/karyawan/${profile.id}` : null;
 
   // Sinkron saat profil di context berubah (setelah simpan / ganti foto), kecuali form sedang diedit.
   const lastSaved = useRef(toForm(profile));
@@ -196,7 +208,10 @@ export default function ProfilePage() {
 
         {/* Data diri */}
         <Card as="form" onSubmit={handleSave} noValidate>
-          <CardHeader title="Data diri" description="Data organisasi hanya dapat diubah oleh HR." />
+          <CardHeader
+            title="Data diri"
+            description={isHr ? 'Data organisasi diubah lewat modul Data karyawan.' : 'Data organisasi hanya dapat diubah oleh HR.'}
+          />
           <div className="grid gap-5 p-5 sm:grid-cols-2">
             <div className="sm:col-span-2">
               <Field label="Nama lengkap" required htmlFor="name">
@@ -240,11 +255,16 @@ export default function ProfilePage() {
               />
               <FieldError>{errors.phone}</FieldError>
             </Field>
-            <ReadOnlyField id="email" label="Email kantor" value={profile.email} />
-            <ReadOnlyField id="nip" label="NIP" value={profile.nip} />
-            <ReadOnlyField id="join" label="Tanggal masuk" value={profile.join_date ? formatDate(profile.join_date) : ''} />
-            <ReadOnlyField id="division" label="Divisi" value={profile.division?.name} />
-            <ReadOnlyField id="position" label="Jabatan" value={profile.position?.name} />
+            <ReadOnlyField id="email" label="Email kantor" value={profile.email} editHref={orgEditHref} />
+            <ReadOnlyField id="nip" label="NIP" value={profile.nip} editHref={orgEditHref} />
+            <ReadOnlyField
+              id="join"
+              label="Tanggal masuk"
+              value={profile.join_date ? formatDate(profile.join_date) : ''}
+              editHref={orgEditHref}
+            />
+            <ReadOnlyField id="division" label="Divisi" value={profile.division?.name} editHref={orgEditHref} />
+            <ReadOnlyField id="position" label="Jabatan" value={profile.position?.name} editHref={orgEditHref} />
           </div>
           <div className="flex flex-col-reverse gap-3 border-t border-line px-5 py-3.5 sm:flex-row sm:items-center sm:justify-between">
             <span className="text-xs text-faint">
