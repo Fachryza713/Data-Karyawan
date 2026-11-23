@@ -36,13 +36,14 @@ V1 punya dua role. Semua persetujuan (cuti, izin WFH/dinas luar) dilakukan oleh 
 
 | Role | Persona contoh | Portal | Kebutuhan utama |
 | --- | --- | --- | --- |
-| `employee` | Raditya Pratama, Frontend Developer, divisi Teknologi Informasi | Portal Karyawan (`/`) | Absen cepat dari HP, ajukan cuti/izin, lihat sisa cuti, slip gaji, BPJS, dan skor KPI sendiri |
-| `hr` | Dian Sastro, HR Manager, Human Capital | Portal HR & Admin (`/hr/`) | Kelola data karyawan, setujui pengajuan, pantau presensi, jalankan payroll, isi KPI |
+| `employee` | Raditya Pratama, Frontend Developer, divisi Teknologi Informasi | Portal Karyawan (`/`) | Absen cepat dari HP, ajukan cuti/izin, lihat sisa cuti, slip gaji, dan BPJS |
+| `hr` | Dian Sastro, HR Manager, Human Capital | Portal HR & Admin (`/hr/`) | Kelola data karyawan, setujui pengajuan, pantau presensi, jalankan payroll, isi dan lihat hasil KPI |
 
 Aturan akses:
 
 - Karyawan hanya bisa membaca dan mengubah data miliknya sendiri, dan hanya field data diri (nama tampilan, foto, telepon). Data organisasi (jabatan, divisi, gaji) "Diatur HR".
 - HR bisa membaca dan mengubah data semua karyawan.
+- Hasil KPI hanya terlihat oleh HR. Karyawan tidak bisa melihat skor, grade, maupun catatan KPI, termasuk penilaian miliknya sendiri.
 - Akun `hr` tetap bisa punya data karyawan sendiri (absen, slip gaji), tapi tidak bisa menyetujui pengajuannya sendiri.
 - Login karyawan di portal HR ditolak, dan sebaliknya HR diarahkan ke portal HR.
 
@@ -190,11 +191,7 @@ Akun dibuat oleh HR (US-10), tidak ada registrasi mandiri.
 - [ ] Pilih periode (misal Q1 2026) dan karyawan. Isi skor 0–100 per indikator + catatan.
 - [ ] Skor akhir = jumlah (skor × bobot). Grade otomatis (bagian 6.5).
 - [ ] Progres penilaian tampil di Beranda HR (misal 108 / 128 sudah dinilai) dengan tenggat.
-- [ ] Status: Draft, Final. Hasil Final terlihat oleh karyawan.
-
-**US-18** Sebagai karyawan, saya ingin melihat hasil KPI saya.
-
-- [ ] Skor per indikator, skor akhir, grade, catatan HR, riwayat kuartal sebelumnya.
+- [ ] Status: Draft, Final. Hasil KPI hanya terlihat oleh HR, juga setelah Final.
 
 ### 5.7 Beranda dan notifikasi (P1)
 
@@ -289,6 +286,7 @@ PPh 21: lihat Open questions (bagian 10).
 - Periode per kuartal (Q1–Q4). Tenggat pengisian diatur HR per periode.
 - Template mengikuti jabatan karyawan saat periode dibuka. Perubahan template tidak mengubah penilaian yang sudah Final.
 - Skor KPI tidak otomatis mengubah bonus. HR memakainya sebagai acuan saat input bonus manual.
+- Hasil KPI hanya terlihat oleh HR. Karyawan tidak bisa membaca tabel KPI (template, indikator, periode, penilaian, skor), tidak ada menu Kinerja atau kartu KPI di Portal Karyawan, dan karyawan tidak menerima notifikasi saat penilaiannya difinalkan.
 
 ## 7. Model data
 
@@ -329,7 +327,7 @@ Storage buckets: `avatars` (publik baca, tulis hanya pemilik) dan `attachments` 
 
 | Area | Kebutuhan |
 | --- | --- |
-| Keamanan data | Row Level Security aktif di semua tabel. Policy: karyawan `select` baris miliknya (`employee_id = auth.uid()`), HR `select/insert/update` semua. Tidak ada `delete` dari client. |
+| Keamanan data | Row Level Security aktif di semua tabel. Policy: karyawan `select` baris miliknya (`employee_id = auth.uid()`), kecuali tabel KPI yang hanya bisa dibaca HR; HR `select/insert/update` semua. Tidak ada `delete` dari client. |
 | Logika sensitif | Absen, approval, payroll, dan KPI final lewat Postgres function `security definer` atau Edge Function. Client tidak pernah menulis langsung ke `attendances` dan `payslips`. |
 | Secret | Hanya `anon key` di frontend (`.env`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`). `service_role key` hanya di Edge Function. `.env` masuk `.gitignore`. |
 | Data pribadi | Nomor rekening disimpan 4 digit terakhir saja. Data demo memakai nama dan nomor fiktif. Lokasi GPS hanya direkam saat absen. |
