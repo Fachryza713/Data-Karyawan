@@ -8,6 +8,5 @@ Thumbs.db
 .env.*
 !.env.example
 
-# Internal docs & prompts
-PRD*.md
+# Internal prompts
 Prompt*.md

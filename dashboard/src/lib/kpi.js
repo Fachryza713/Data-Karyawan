@@ -142,7 +142,6 @@ export const formatScore = (n) => (n == null ? '—' : scoreFmt.format(Number(n)
 export const formatPoints = (n) => (n == null ? '—' : rawFmt.format(Number(n)));
 
 const byOrder = (a, b) => a.sort_order - b.sort_order;
-const byPeriodDesc = (a, b) => (b.period?.start_date ?? '').localeCompare(a.period?.start_date ?? '');
 
 const REVIEW_LIST_SELECT = `id, status, final_score, grade, reviewer_id, updated_at, finalized_at,
   employee:profiles!kpi_reviews_employee_id_fkey(id, full_name, nip, photo_url, is_active, division:divisions(id, name)),
@@ -186,31 +185,6 @@ export function useKpiReview(reviewId) {
     setState(next);
     return next;
   }, [reviewId]);
-  useEffect(() => { load(); }, [load]);
-  return { ...state, reload: load };
-}
-
-/** Hasil KPI final milik karyawan login (RLS: hanya miliknya dan hanya final), periode terbaru dulu. */
-export function useMyKpiResults(employeeId) {
-  const [state, setState] = useState({ loading: true, error: null, rows: [], activePeriod: null });
-  const load = useCallback(async () => {
-    setState((s) => ({ ...s, loading: true, error: null }));
-    const [res, act] = await Promise.all([
-      supabase.from('kpi_reviews')
-        .select(`id, final_score, grade, note, finalized_at,
-          period:kpi_periods(id, name, year, quarter, start_date, end_date, status),
-          position:positions(name),
-          scores:kpi_scores(id, name, description, weight, target, score, note, sort_order)`)
-        .eq('employee_id', employeeId)
-        .eq('status', 'final'),
-      supabase.from('kpi_periods').select('id, name, deadline').eq('status', 'aktif').maybeSingle(),
-    ]);
-    const rows = (res.data ?? [])
-      .filter((r) => r.period)
-      .map((r) => ({ ...r, scores: (r.scores ?? []).slice().sort(byOrder) }))
-      .sort(byPeriodDesc);
-    setState({ loading: false, error: res.error || act.error, rows, activePeriod: act.data ?? null });
-  }, [employeeId]);
   useEffect(() => { load(); }, [load]);
   return { ...state, reload: load };
 }

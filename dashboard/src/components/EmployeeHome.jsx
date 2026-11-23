@@ -5,7 +5,6 @@ import WelcomeBanner from './WelcomeBanner';
 import AttendanceCard from './AttendanceCard';
 import LeaveQuotaCard from './LeaveQuotaCard';
 import SalaryCard from './SalaryCard';
-import KpiSummaryCard from './KpiSummaryCard';
 import BenefitsCard from './BenefitsCard';
 import { useAuth } from '../context/AuthContext';
 import { useMyDashboard } from '../lib/dashboard';
@@ -48,17 +47,12 @@ export default function EmployeeHome({ setActiveMenu }) {
           loading={loading}
           setActiveMenu={setActiveMenu}
         />
-        <KpiSummaryCard
-          kpi={d?.kpi ?? null}
-          activePeriod={d?.kpi_active_period ?? null}
-          loading={loading}
-          setActiveMenu={setActiveMenu}
-        />
         <BenefitsCard
           benefits={d?.benefits ?? []}
           activeCount={d?.benefits_active ?? 0}
           loading={loading}
           setActiveMenu={setActiveMenu}
+          className="lg:col-span-2"
         />
       </div>
     </>
