@@ -1,6 +1,6 @@
 # HRIS Blue Rose Tech
 
-Aplikasi web **Human Resource Information System** dengan dua portal: **Portal Karyawan** untuk absen GPS, cuti, slip gaji, dan hasil KPI, serta **Portal HR & Admin** untuk data karyawan, approval, payroll, dan evaluasi kinerja. Dibangun dengan React + Vite di frontend dan Supabase (Postgres, Auth, Storage, Realtime, Edge Functions) di backend. Semua logika sensitif (absen, approval, payroll, KPI) berjalan di database lewat fungsi `security definer` dan dilindungi Row Level Security.
+Aplikasi web **Human Resource Information System** dengan dua portal: **Portal Karyawan** untuk absen GPS, cuti, dan slip gaji, serta **Portal HR & Admin** untuk data karyawan, approval, payroll, dan evaluasi kinerja. Dibangun dengan React + Vite di frontend dan Supabase (Postgres, Auth, Storage, Realtime, Edge Functions) di backend. Semua logika sensitif (absen, approval, payroll, KPI) berjalan di database lewat fungsi `security definer` dan dilindungi Row Level Security.
 
 > Proyek portofolio. Semua nama, NIP, nomor rekening, dan nomor BPJS di data demo **fiktif**.
 
@@ -20,8 +20,8 @@ Diambil dari data demo (`supabase/seed-demo.sql`).
 | Beranda | Kehadiran & cuti |
 | --- | --- |
 | ![Beranda karyawan](docs/screenshots/karyawan-beranda.png) | ![Kehadiran & cuti](docs/screenshots/karyawan-kehadiran.png) |
-| **Slip gaji** | **Kinerja (KPI)** |
-| ![Slip gaji](docs/screenshots/karyawan-slip.png) | ![Hasil KPI](docs/screenshots/karyawan-kinerja.png) |
+| **Slip gaji** | |
+| ![Slip gaji](docs/screenshots/karyawan-slip.png) | |
 
 <p align="center"><img src="docs/screenshots/karyawan-mobile-dark.png" alt="Beranda karyawan di HP, mode gelap" width="300"></p>
 
@@ -40,14 +40,13 @@ Diambil dari data demo (`supabase/seed-demo.sql`).
 ### Karyawan (`/app`)
 
 - **Login, lupa & ganti kata sandi** (Supabase Auth). Karyawan yang login ke portal HR ditolak, dan sebaliknya.
-- **Beranda**: sapaan sesuai jam WIB, status absen hari ini, rekap kehadiran bulan ini, sisa cuti, slip terakhir, hasil KPI terakhir, manfaat aktif. Satu panggilan RPC `my_dashboard()`.
+- **Beranda**: sapaan sesuai jam WIB, status absen hari ini, rekap kehadiran bulan ini, sisa cuti, slip terakhir, manfaat aktif. Satu panggilan RPC `my_dashboard()`.
 - **Absen masuk/pulang berbasis GPS**: jarak ke kantor dihitung di server (haversine). Di luar radius ditolak kecuali ada izin WFH/dinas yang disetujui. Status tepat waktu, terlambat, atau pulang cepat dihitung dari shift.
 - **Pengajuan** cuti tahunan (memotong kuota), sakit (lampiran), izin khusus, WFH, dan dinas luar. Pengajuan yang masih menunggu bisa dibatalkan.
 - **Riwayat kehadiran** per bulan.
 - **Profil**: ubah data diri dan foto. Data organisasi (jabatan, divisi, gaji) hanya bisa diubah HR.
 - **Gaji & manfaat**: slip gaji per periode (siap cetak/PDF), sembunyikan nominal, BPJS Kesehatan, BPJS Ketenagakerjaan, dan asuransi.
-- **Kinerja**: skor per indikator, skor akhir, grade, catatan HR, dan riwayat kuartal.
-- **Notifikasi realtime**: pengajuan disetujui/ditolak, slip terbit, hasil KPI final.
+- **Notifikasi realtime**: pengajuan disetujui/ditolak, slip terbit.
 
 ### HR (`/hr`)
 
@@ -56,7 +55,7 @@ Diambil dari data demo (`supabase/seed-demo.sql`).
 - **Master data & pengaturan**: divisi, jabatan, kantor (titik GPS + radius), shift, hari libur.
 - **Kehadiran & cuti**: log presensi semua karyawan (termasuk di luar radius dan alpa), ekspor CSV, serta approval cuti/izin/WFH/dinas dengan catatan. HR tidak bisa menyetujui pengajuannya sendiri.
 - **Penggajian**: payroll bulanan Draft → Final → Dibayar, BPJS karyawan dan perusahaan dihitung otomatis, bonus/PPh 21 manual, buka ulang run dengan alasan.
-- **Evaluasi kinerja**: template KPI per jabatan (total bobot 100%), periode kuartalan, penilaian per karyawan dengan skor akhir dan grade yang dihitung saat mengetik.
+- **Evaluasi kinerja**: template KPI per jabatan (total bobot 100%), periode kuartalan, penilaian per karyawan dengan skor akhir dan grade yang dihitung saat mengetik. Hasil KPI hanya terlihat oleh HR; karyawan tidak bisa membaca tabel KPI (RLS).
 - **Audit log** di database (`audit_logs`, hanya bisa dibaca HR) mencatat approval, perubahan gaji, finalisasi payroll, dan perubahan data karyawan.
 - Akun HR mengikuti aturan yang sama: notifikasi pribadi dan tidak bisa menyetujui pengajuan sendiri.
 

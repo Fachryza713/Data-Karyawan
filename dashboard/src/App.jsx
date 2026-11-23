@@ -1,13 +1,12 @@
 import React, { useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import { Home, User, Clock, Wallet, TrendingUp } from 'lucide-react';
+import { Navigate, useNavigate, useParams } from 'react-router-dom';
+import { Home, User, Clock, Wallet } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import TopHeader from './components/TopHeader';
 import EmployeeHome from './components/EmployeeHome';
 import ProfilePage from './components/ProfilePage';
 import AttendancePage from './components/AttendancePage';
 import SalaryPage from './components/SalaryPage';
-import PerformancePage from './components/PerformancePage';
 import { useAuth, profileSubtitle } from './context/AuthContext';
 
 const MENU = [
@@ -15,17 +14,20 @@ const MENU = [
   { id: 'profil', label: 'Profil', icon: User },
   { id: 'kehadiran', label: 'Kehadiran & Cuti', icon: Clock },
   { id: 'gaji', label: 'Gaji & Manfaat', icon: Wallet },
-  { id: 'kinerja', label: 'Kinerja', icon: TrendingUp },
 ];
 
-/* Portal karyawan, di-mount pada /app/*. Menu aktif = segmen URL setelah /app. */
+/* Portal karyawan, di-mount pada /app/*. Menu aktif = segmen URL setelah /app.
+   Segmen yang tidak dikenal (mis. /app/kinerja yang sudah dihapus) diarahkan ke Beranda. */
 export default function EmployeePortal({ isDark, toggleTheme }) {
   const { profile, signOut } = useAuth();
   const navigate = useNavigate();
   const { '*': sub = '' } = useParams();
-  const activeMenu = MENU.some((m) => m.id === sub) ? sub : 'beranda';
+  const knownMenu = MENU.some((m) => m.id === sub);
+  const activeMenu = knownMenu ? sub : 'beranda';
   const setActiveMenu = (id) => navigate(id === 'beranda' ? '/app' : `/app/${id}`);
   const [menuOpen, setMenuOpen] = useState(false);
+
+  if (sub && !knownMenu) return <Navigate to="/app" replace />;
 
   const handleLogout = async () => {
     await signOut();
@@ -60,8 +62,6 @@ export default function EmployeePortal({ isDark, toggleTheme }) {
             <AttendancePage />
           ) : activeMenu === 'gaji' ? (
             <SalaryPage />
-          ) : activeMenu === 'kinerja' ? (
-            <PerformancePage />
           ) : (
             <EmployeeHome setActiveMenu={setActiveMenu} />
           )}

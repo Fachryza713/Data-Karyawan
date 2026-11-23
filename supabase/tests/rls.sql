@@ -7,12 +7,18 @@
 --   3. tidak bisa INSERT langsung ke attendances, payslips, dan tabel lain yang hanya
 --      boleh ditulis HR / fungsi server; tidak bisa menaikkan role sendiri;
 --   4. tidak bisa memanggil RPC khusus HR maupun fungsi internal;
---   5. tetap bisa membaca datanya sendiri (kontrol positif, agar tes tidak lolos karena
---      policy yang menolak semuanya);
+--   1b. tidak bisa membaca satu baris pun dari tabel KPI (kpi_templates, kpi_indicators,
+--      kpi_periods, kpi_reviews, kpi_scores), termasuk penilaian final miliknya sendiri;
+--      tidak menerima notifikasi kpi_final; my_dashboard() tanpa field KPI;
+--   5. tetap bisa membaca datanya sendiri di luar KPI (kontrol positif, agar tes tidak
+--      lolos karena policy yang menolak semuanya);
+--   5b. sebagai HR: tetap bisa membaca semua tabel KPI, hr_kpi_positions(), dan kartu
+--      KPI di hr_dashboard();
 --   6. anon tidak bisa membaca tabel apa pun, dan setiap RPC yang terbuka untuk
 --      authenticated sudah terdaftar di daftar audit di bawah.
 --
--- Cara pakai (cloud atau lokal, butuh minimal 2 karyawan aktif ber-role employee):
+-- Cara pakai (cloud atau lokal, butuh minimal 2 karyawan aktif ber-role employee dan
+-- 1 HR aktif):
 --   npx supabase db query --remote -f supabase/tests/rls.sql
 --   (atau tempel di SQL Editor / psql)
 --
@@ -24,9 +30,13 @@ do $rls$
 declare
   a        uuid;   -- karyawan penguji
   b        uuid;   -- karyawan korban
+  v_hr     uuid;   -- HR untuk kontrol positif KPI
   v_run    uuid;
   v_period uuid;
+  v_period2 uuid;
+  v_tpl    uuid;
   v_rev_a  uuid;
+  v_rev_a2 uuid;
   v_rev_b  uuid;
   v_type   uuid;
   r        record;
@@ -40,6 +50,10 @@ begin
   select id into b from public.profiles where role = 'employee' and is_active and id <> a order by created_at, id limit 1;
   if b is null then
     raise exception 'RLS AUDIT: butuh minimal 2 karyawan aktif ber-role employee (jalankan supabase/seed-demo.sql).';
+  end if;
+  select id into v_hr from public.profiles where role = 'hr' and is_active order by created_at, id limit 1;
+  if v_hr is null then
+    raise exception 'RLS AUDIT: butuh minimal 1 HR aktif (jalankan supabase/seed-demo.sql).';
   end if;
   select id into v_type from public.leave_types where code = 'tahunan';
 
@@ -67,7 +81,21 @@ begin
   values (v_period, b, 80, 'B', 'final', now()) returning id into v_rev_b;
   insert into public.kpi_scores (review_id, name, weight, score)
   values (v_rev_a, 'Uji RLS', 100, 80), (v_rev_b, 'Uji RLS', 100, 80);
-  insert into public.notifications (user_id, type, title) values (a, 'kpi_final', 'Uji RLS'), (b, 'kpi_final', 'Uji RLS');
+  -- Template nonaktif untuk jabatan A (policy lama "karyawan baca jabatannya" akan membukanya).
+  insert into public.kpi_templates (position_id, name, is_active)
+  values (coalesce((select position_id from public.profiles where id = a), (select id from public.positions limit 1)),
+          'Uji RLS', false)
+  returning id into v_tpl;
+  insert into public.kpi_indicators (template_id, name, weight) values (v_tpl, 'Uji RLS', 100);
+  -- Finalisasi review draft A lewat UPDATE agar trigger notify_kpi_final berjalan:
+  -- karyawan tidak boleh menerima notifikasi kpi_final (diperiksa di bagian 1b).
+  insert into public.kpi_periods (name, year, quarter, start_date, end_date, deadline, status)
+  values ('Uji RLS 2000 Q4', 2000, 4, '2000-10-01', '2000-12-31', '2000-12-31', 'selesai') returning id into v_period2;
+  insert into public.kpi_reviews (period_id, employee_id) values (v_period2, a) returning id into v_rev_a2;
+  update public.kpi_reviews set status = 'final', final_score = 90, grade = 'A', finalized_at = now()
+  where id = v_rev_a2;
+  insert into public.notifications (user_id, type, title)
+  values (a, 'payslip_published', 'Uji RLS'), (b, 'payslip_published', 'Uji RLS');
   insert into public.audit_logs (actor_id, action, table_name, record_id) values (b, 'update', 'uji_rls', b);
 
   -- ===================================================================
@@ -98,6 +126,26 @@ begin
       execute r.q into n;
       if n <> 0 then fails := fails || format('BACA %s milik orang lain: %s baris terlihat', r.label, n); end if;
     exception when insufficient_privilege then null;  -- ditolak = aman
+    end;
+  end loop;
+
+  -- 1b. KPI khusus HR: karyawan tidak membaca satu baris pun, termasuk miliknya sendiri
+  for r in select * from (values
+    ('kpi_templates',          'select count(*) from public.kpi_templates'),
+    ('kpi_indicators',         'select count(*) from public.kpi_indicators'),
+    ('kpi_periods',            'select count(*) from public.kpi_periods'),
+    ('kpi_reviews',            'select count(*) from public.kpi_reviews'),
+    ('kpi_scores',             'select count(*) from public.kpi_scores'),
+    ('notifikasi kpi_final',   'select count(*) from public.notifications where type = ''kpi_final'''),
+    ('field KPI my_dashboard', 'select count(*) from jsonb_object_keys(public.my_dashboard()) k where k like ''kpi%''')
+  ) v(label, q) loop
+    total := total + 1;
+    begin
+      execute r.q into n;
+      if n <> 0 then fails := fails || format('KPI terlihat oleh karyawan, %s: %s baris', r.label, n); end if;
+    exception
+      when insufficient_privilege then null;
+      when others then fails := fails || format('KPI %s: error tak terduga %s (%s)', r.label, sqlstate, left(sqlerrm, 80));
     end;
   end loop;
 
@@ -213,6 +261,7 @@ begin
     ('(internal) mark_absent',          'select public.mark_absent(null)'),
     ('(internal) _payroll_fill_run',    format('select public._payroll_fill_run(%L)', v_run)),
     ('(internal) _kpi_create_reviews',  format('select public._kpi_create_reviews(%L)', v_period)),
+    ('(internal) template_is_valid',    format('select public.template_is_valid(%L)', v_tpl)),
     ('(internal) create_leave_balances','select public.create_leave_balances(2000)'),
     ('(internal) ensure_leave_balance', format('select public.ensure_leave_balance(%L, 2001)', a))
   ) v(label, q) loop
@@ -235,8 +284,6 @@ begin
     ('benefits',          format('select count(*) from public.benefits where employee_id = %L', a)),
     ('salary_components', format('select count(*) from public.salary_components where employee_id = %L', a)),
     ('payslips (run final)', format('select count(*) from public.payslips where employee_id = %L and run_id = %L', a, v_run)),
-    ('kpi_reviews (final)',  format('select count(*) from public.kpi_reviews where id = %L', v_rev_a)),
-    ('kpi_scores (final)',   format('select count(*) from public.kpi_scores where review_id = %L', v_rev_a)),
     ('notifications',     format('select count(*) from public.notifications where user_id = %L', a))
   ) v(label, q) loop
     total := total + 1;
@@ -244,6 +291,27 @@ begin
       execute r.q into n;
       if n = 0 then fails := fails || format('KONTROL: karyawan tidak bisa membaca %s miliknya', r.label); end if;
     exception when others then fails := fails || format('KONTROL %s: %s', r.label, left(sqlerrm, 80));
+    end;
+  end loop;
+  reset role;
+
+  -- 5b. Kontrol positif HR: modul KPI tetap terbaca penuh
+  perform set_config('request.jwt.claims', json_build_object('sub', v_hr, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  for r in select * from (values
+    ('kpi_templates',          format('select count(*) from public.kpi_templates where id = %L', v_tpl)),
+    ('kpi_indicators',         format('select count(*) from public.kpi_indicators where template_id = %L', v_tpl)),
+    ('kpi_periods',            format('select count(*) from public.kpi_periods where id in (%L, %L)', v_period, v_period2)),
+    ('kpi_reviews',            format('select count(*) from public.kpi_reviews where id in (%L, %L, %L)', v_rev_a, v_rev_a2, v_rev_b)),
+    ('kpi_scores',             format('select count(*) from public.kpi_scores where review_id in (%L, %L)', v_rev_a, v_rev_b)),
+    ('hr_kpi_positions()',     'select count(*) from public.hr_kpi_positions()'),
+    ('kartu KPI hr_dashboard', 'select count(*) from jsonb_object_keys(public.hr_dashboard()) k where k = ''kpi''')
+  ) v(label, q) loop
+    total := total + 1;
+    begin
+      execute r.q into n;
+      if n = 0 then fails := fails || format('KONTROL HR: tidak bisa membaca %s', r.label); end if;
+    exception when others then fails := fails || format('KONTROL HR %s: %s', r.label, left(sqlerrm, 80));
     end;
   end loop;
   reset role;
@@ -279,7 +347,7 @@ begin
     elsif r.proname <> all (array[
       -- swalayan karyawan (memeriksa auth.uid() sendiri)
       'cancel_request', 'clock_in', 'clock_out', 'haversine_m', 'is_hr', 'my_dashboard', 'my_payslip_periods',
-      'submit_leave', 'submit_remote', 'template_is_valid', 'update_my_profile', 'working_days',
+      'submit_leave', 'submit_remote', 'update_my_profile', 'working_days',
       -- khusus HR (diuji di bagian 4)
       'hr_dashboard', 'hr_monthly_report', 'hr_attendance_log', 'hr_attendance_summary', 'hr_payroll_runs',
       'hr_kpi_positions', 'hr_change_salary', 'hr_create_employee', 'hr_delete_holiday', 'hr_delete_office',
