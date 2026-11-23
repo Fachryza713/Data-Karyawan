@@ -3,8 +3,11 @@ import { Search, Sun, Moon, Menu } from 'lucide-react';
 import { Avatar, IconButton } from './ui';
 import NotificationBell from './NotificationBell';
 
-/* Header generik: tombol menu (mobile), pencarian, tema, notifikasi, identitas pengguna. */
-export default function TopHeader({ isDark, onToggleTheme, onOpenMenu, userName, userRole, profilePhoto, searchPlaceholder }) {
+/* Header generik: tombol menu (mobile), pencarian, tema, notifikasi, identitas pengguna.
+   Blok nama + avatar adalah tombol ke halaman Profil portal yang sedang dibuka (onOpenProfile). */
+export default function TopHeader({
+  isDark, onToggleTheme, onOpenMenu, onOpenProfile, userName, userRole, profilePhoto, searchPlaceholder,
+}) {
   return (
     <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-line bg-surface px-4 sm:px-6">
       <IconButton label="Buka menu" onClick={onOpenMenu} className="-ml-1.5 lg:hidden">
@@ -28,12 +31,20 @@ export default function TopHeader({ isDark, onToggleTheme, onOpenMenu, userName,
         </IconButton>
         <NotificationBell />
 
-        <div className="ml-2 flex items-center gap-3 border-l border-line pl-3">
-          <div className="hidden text-right leading-tight md:block">
-            <p className="text-sm font-medium">{userName}</p>
-            <p className="text-xs text-faint">{userRole}</p>
-          </div>
-          <Avatar name={userName} src={profilePhoto} size={34} />
+        <div className="ml-2 border-l border-line pl-1.5">
+          <button
+            type="button"
+            onClick={onOpenProfile}
+            aria-label="Buka profil"
+            title="Buka profil"
+            className="flex items-center gap-3 rounded-lg px-1.5 py-1 transition-colors hover:bg-subtle"
+          >
+            <span className="hidden text-right leading-tight md:block">
+              <span className="block text-sm font-medium">{userName}</span>
+              <span className="block text-xs text-faint">{userRole}</span>
+            </span>
+            <Avatar name={userName} src={profilePhoto} size={34} />
+          </button>
         </div>
       </div>
     </header>

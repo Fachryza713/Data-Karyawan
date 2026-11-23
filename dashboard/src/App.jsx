@@ -50,6 +50,7 @@ export default function EmployeePortal({ isDark, toggleTheme }) {
           isDark={isDark}
           onToggleTheme={toggleTheme}
           onOpenMenu={() => setMenuOpen(true)}
+          onOpenProfile={() => setActiveMenu('profil')}
           userName={profile.full_name}
           userRole={profileSubtitle(profile)}
           profilePhoto={profile.photo_url}

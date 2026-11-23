@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
-  Home, Users, Clock, Wallet, TrendingUp, Settings, Construction,
+  Home, User, Users, Clock, Wallet, TrendingUp, Settings, Construction,
 } from 'lucide-react';
 import HRAttendancePage from './HRAttendancePage';
+import ProfilePage from './ProfilePage';
 import EmployeesModule from './hr/EmployeesModule';
 import SettingsPage from './hr/SettingsPage';
 import PayrollModule from './hr/PayrollModule';
@@ -17,6 +18,7 @@ import { usePendingRequestCount } from '../lib/leave';
 
 const hrMenu = [
   { id: 'beranda', label: 'Beranda', icon: Home },
+  { id: 'profil', label: 'Profil', icon: User },
   { id: 'karyawan', label: 'Data karyawan', icon: Users },
   { id: 'kehadiran', label: 'Kehadiran & cuti', icon: Clock },
   { id: 'penggajian', label: 'Penggajian & manfaat', icon: Wallet },
@@ -88,6 +90,7 @@ export default function HRDashboard({ isDark, toggleTheme }) {
           isDark={isDark}
           onToggleTheme={toggleTheme}
           onOpenMenu={() => setMenuOpen(true)}
+          onOpenProfile={() => setActiveHrTab('profil')}
           userName={profile.full_name}
           userRole={profileSubtitle(profile)}
           profilePhoto={profile.photo_url}
@@ -98,6 +101,8 @@ export default function HRDashboard({ isDark, toggleTheme }) {
             <SettingsPage tab={sub.split('/')[1]} />
           ) : activeHrTab === 'beranda' ? (
             <HRHome go={setActiveHrTab} />
+          ) : activeHrTab === 'profil' ? (
+            <ProfilePage />
           ) : activeHrTab === 'karyawan' ? (
             <EmployeesModule />
           ) : activeHrTab === 'kehadiran' ? (
