@@ -13,7 +13,8 @@
 --   5. tetap bisa membaca datanya sendiri di luar KPI (kontrol positif, agar tes tidak
 --      lolos karena policy yang menolak semuanya);
 --   5b. sebagai HR: tetap bisa membaca semua tabel KPI, hr_kpi_positions(), dan kartu
---      KPI di hr_dashboard();
+--      KPI di hr_dashboard(); bisa mengubah company_settings (kontak bantuan);
+--   (company_settings: karyawan hanya boleh membaca, tidak bisa INSERT/UPDATE/DELETE)
 --   6. anon tidak bisa membaca tabel apa pun, dan setiap RPC yang terbuka untuk
 --      authenticated sudah terdaftar di daftar audit di bawah.
 --
@@ -173,6 +174,8 @@ begin
     ('UBAH master divisi',       'update public.divisions set name = name'),
     ('UBAH setting payroll',     'update public.payroll_settings set value = value'),
     ('UBAH run payroll',         format('update public.payroll_runs set status = %L where id = %L', 'paid', v_run)),
+    ('UBAH company_settings',    'update public.company_settings set value = jsonb_set(value, ''{whatsapp}'', ''"6280000000000"'')'),
+    ('HAPUS company_settings',   'delete from public.company_settings'),
     ('HAPUS profiles',           format('delete from public.profiles where id = %L', b)),
     ('HAPUS attendances',        format('delete from public.attendances where employee_id in (%L, %L)', a, b)),
     ('HAPUS requests',           format('delete from public.requests where employee_id in (%L, %L)', a, b)),
@@ -214,7 +217,8 @@ begin
     ('INSERT holidays',            'insert into public.holidays (date, name) values (''2000-01-07'', ''Uji'')'),
     ('INSERT leave_types',         'insert into public.leave_types (code, name) values (''uji_rls'', ''Uji'')'),
     ('INSERT kpi_templates',       format('insert into public.kpi_templates (position_id, name) select position_id, %L from public.profiles where id = %L', 'x', a)),
-    ('INSERT kpi_periods',         'insert into public.kpi_periods (name, year, quarter, start_date, end_date, deadline) values (''x'', 2000, 2, ''2000-04-01'', ''2000-06-30'', ''2000-06-30'')')
+    ('INSERT kpi_periods',         'insert into public.kpi_periods (name, year, quarter, start_date, end_date, deadline) values (''x'', 2000, 2, ''2000-04-01'', ''2000-06-30'', ''2000-06-30'')'),
+    ('INSERT company_settings',    'insert into public.company_settings (key, value) values (''uji_rls'', ''{}''::jsonb)')
   ) v(label, q) loop
     total := total + 1;
     begin
@@ -284,7 +288,8 @@ begin
     ('benefits',          format('select count(*) from public.benefits where employee_id = %L', a)),
     ('salary_components', format('select count(*) from public.salary_components where employee_id = %L', a)),
     ('payslips (run final)', format('select count(*) from public.payslips where employee_id = %L and run_id = %L', a, v_run)),
-    ('notifications',     format('select count(*) from public.notifications where user_id = %L', a))
+    ('notifications',     format('select count(*) from public.notifications where user_id = %L', a)),
+    ('company_settings hr_contact', 'select count(*) from public.company_settings where key = ''hr_contact''')
   ) v(label, q) loop
     total := total + 1;
     begin
@@ -305,7 +310,8 @@ begin
     ('kpi_reviews',            format('select count(*) from public.kpi_reviews where id in (%L, %L, %L)', v_rev_a, v_rev_a2, v_rev_b)),
     ('kpi_scores',             format('select count(*) from public.kpi_scores where review_id in (%L, %L)', v_rev_a, v_rev_b)),
     ('hr_kpi_positions()',     'select count(*) from public.hr_kpi_positions()'),
-    ('kartu KPI hr_dashboard', 'select count(*) from jsonb_object_keys(public.hr_dashboard()) k where k = ''kpi''')
+    ('kartu KPI hr_dashboard', 'select count(*) from jsonb_object_keys(public.hr_dashboard()) k where k = ''kpi'''),
+    ('UBAH company_settings',  'with u as (update public.company_settings set value = value where key = ''hr_contact'' returning 1) select count(*) from u')
   ) v(label, q) loop
     total := total + 1;
     begin

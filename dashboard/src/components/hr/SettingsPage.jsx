@@ -2,16 +2,22 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Building2, Clock, CalendarDays, Plus, Pencil, Trash2, Loader2, MapPin, LocateFixed, ExternalLink, ChevronLeft, ChevronRight,
+  Headset,
 } from 'lucide-react';
 import { PageHeader, Card, CardHeader, Button, IconButton, Badge, Field, Modal, useToast, inputCls, cx } from '../ui';
 import { FieldError } from '../LoginPage';
 import { supabase } from '../../lib/supabase';
 import { formatDate } from '../../lib/hr';
+import {
+  CONTACT_KEYS, HOURS_MAX, useCompanySetting, saveCompanySetting, validateContact, normalizeWhatsapp,
+  formatWhatsapp, whatsappHref, WHATSAPP_RE,
+} from '../../lib/companySettings';
 
 const TABS = [
   { id: 'kantor', label: 'Kantor', icon: Building2 },
   { id: 'shift', label: 'Shift', icon: Clock },
   { id: 'libur', label: 'Hari libur', icon: CalendarDays },
+  { id: 'kontak', label: 'Kontak HR', icon: Headset },
 ];
 
 const MIN_RADIUS = 25;
@@ -699,6 +705,141 @@ function HolidaysTab({ toast }) {
   );
 }
 
+/* ── Kontak HR: company_settings key hr_contact, tampil di halaman Bantuan karyawan ── */
+const contactFromValue = (v) => ({ email: v?.email ?? '', whatsapp: v?.whatsapp ?? '', hours: v?.hours ?? '' });
+const updatedFmt = new Intl.DateTimeFormat('id-ID', {
+  timeZone: 'Asia/Jakarta', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit',
+});
+
+function ContactTab({ toast }) {
+  const { loading, error, value, updatedAt, reload } = useCompanySetting(CONTACT_KEYS.hr);
+  const [initial, setInitial] = useState(null);
+  const [values, setValues] = useState(null);
+  const [loadedVersion, setLoadedVersion] = useState(null);
+  const [errors, setErrors] = useState({});
+  const [saving, setSaving] = useState(false);
+
+  // Isi form sekali per versi data (updated_at), bukan setiap muat ulang, agar isian yang
+  // sedang diketik tidak tertimpa (StrictMode menjalankan efek dua kali).
+  const version = loading || error ? null : updatedAt ?? 'baru';
+  if (version !== null && version !== loadedVersion) {
+    const v = contactFromValue(value);
+    setLoadedVersion(version);
+    setInitial(v);
+    setValues(v);
+  }
+
+  const set = (key, val) => {
+    setValues((v) => ({ ...v, [key]: val }));
+    setErrors((e) => (e[key] || e.form ? { ...e, [key]: null, form: null } : e));
+  };
+
+  const dirty = !!values && !!initial && (
+    values.email.trim() !== initial.email
+    || normalizeWhatsapp(values.whatsapp) !== initial.whatsapp
+    || values.hours.trim() !== initial.hours
+  );
+
+  const submit = async (ev) => {
+    ev.preventDefault();
+    const e = validateContact(values);
+    setErrors(e);
+    if (Object.values(e).some(Boolean)) return;
+    setSaving(true);
+    const next = {
+      email: values.email.trim(),
+      whatsapp: normalizeWhatsapp(values.whatsapp),
+      hours: values.hours.trim(),
+    };
+    const err = await saveCompanySetting(CONTACT_KEYS.hr, next);
+    setSaving(false);
+    if (err) {
+      setErrors({ form: err.code === '42501' ? 'Hanya HR yang dapat mengubah kontak.' : errorMessage(err) });
+      return;
+    }
+    toast('Kontak HR disimpan.');
+    reload();
+  };
+
+  if (!values) {
+    return <Card>{error ? <LoadError onRetry={reload} /> : <Loading />}</Card>;
+  }
+
+  const waPreview = normalizeWhatsapp(values.whatsapp);
+
+  return (
+    <Card as="form" onSubmit={submit} noValidate>
+      <CardHeader
+        title="Kontak HR"
+        description="Tampil di halaman Bantuan karyawan sebagai tombol email dan WhatsApp."
+      />
+      <div className="space-y-4 p-5">
+        {errors.form && <p className="rounded-lg bg-danger-soft px-3 py-2 text-[13px] text-danger" role="alert">{errors.form}</p>}
+        {!value && (
+          <p className="rounded-lg bg-warning-soft px-3 py-2 text-[13px] text-warning">
+            Kontak HR belum diatur. Karyawan belum melihat tombol kontak di halaman Bantuan.
+          </p>
+        )}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Email HR" required htmlFor="contact-email" hint="Tombol Email membuka aplikasi email dengan subjek berisi nama karyawan.">
+            <input
+              id="contact-email" type="email" autoComplete="off" maxLength={254} value={values.email}
+              onChange={(e) => set('email', e.target.value)}
+              placeholder="hr@perusahaan.co.id"
+              aria-invalid={!!errors.email || undefined}
+              className={cx(inputCls, errors.email && 'border-danger')}
+            />
+            <FieldError>{errors.email}</FieldError>
+          </Field>
+          <Field label="Nomor WhatsApp" required htmlFor="contact-wa" hint="Format 62…, tanpa + dan spasi. Ketikan 0812… atau +62 812… diubah otomatis.">
+            <input
+              id="contact-wa" type="tel" inputMode="tel" autoComplete="off" maxLength={20} value={values.whatsapp}
+              onChange={(e) => set('whatsapp', e.target.value)}
+              onBlur={() => { if (values.whatsapp) set('whatsapp', normalizeWhatsapp(values.whatsapp)); }}
+              placeholder="6281234567890"
+              aria-invalid={!!errors.whatsapp || undefined}
+              className={cx(inputCls, 'num', errors.whatsapp && 'border-danger')}
+            />
+            <FieldError>{errors.whatsapp}</FieldError>
+            {!errors.whatsapp && WHATSAPP_RE.test(waPreview) && (
+              <a
+                href={whatsappHref(waPreview)} target="_blank" rel="noopener noreferrer"
+                className="mt-1.5 inline-flex items-center gap-1 text-[13px] font-medium text-accent-text hover:underline"
+              >
+                Uji di WhatsApp ({formatWhatsapp(waPreview)}) <ExternalLink size={12} aria-hidden="true" />
+              </a>
+            )}
+          </Field>
+        </div>
+        <Field label="Jam layanan" required htmlFor="contact-hours" aside={`${values.hours.length}/${HOURS_MAX}`}>
+          <input
+            id="contact-hours" maxLength={HOURS_MAX} value={values.hours}
+            onChange={(e) => set('hours', e.target.value)}
+            placeholder="Senin-Jumat 08:30-17:30 WIB"
+            aria-invalid={!!errors.hours || undefined}
+            className={cx(inputCls, errors.hours && 'border-danger')}
+          />
+          <FieldError>{errors.hours}</FieldError>
+        </Field>
+      </div>
+      <div className="flex flex-col-reverse gap-3 border-t border-line px-5 py-3.5 sm:flex-row sm:items-center sm:justify-between">
+        <span className="text-xs text-faint">
+          {updatedAt ? `Terakhir diperbarui ${updatedFmt.format(new Date(updatedAt))} WIB` : 'Belum pernah disimpan'}
+        </span>
+        <div className="flex gap-2">
+          {dirty && (
+            <Button variant="ghost" onClick={() => { setValues(initial); setErrors({}); }} disabled={saving}>Batal</Button>
+          )}
+          <Button type="submit" disabled={!dirty || saving} aria-busy={saving || undefined}>
+            {saving && <Loader2 size={16} className="animate-spin" aria-hidden="true" />}
+            {saving ? 'Menyimpan…' : 'Simpan'}
+          </Button>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 /* ── Root: /hr/pengaturan/:tab ── */
 export default function SettingsPage({ tab }) {
   const navigate = useNavigate();
@@ -712,11 +853,12 @@ export default function SettingsPage({ tab }) {
   const props = { usage, reloadUsage, toast };
   const panel = active === 'shift' ? <ShiftsTab {...props} />
     : active === 'libur' ? <HolidaysTab toast={toast} />
+    : active === 'kontak' ? <ContactTab toast={toast} />
     : <OfficesTab {...props} />;
 
   return (
     <>
-      <PageHeader title="Pengaturan" description="Lokasi kantor, jam kerja, dan hari libur untuk perhitungan presensi." />
+      <PageHeader title="Pengaturan" description="Lokasi kantor, jam kerja, dan hari libur untuk presensi, serta kontak HR di halaman Bantuan." />
 
       <div role="tablist" aria-label="Pengaturan" className="mb-5 flex gap-1 overflow-x-auto border-b border-line">
         {TABS.map((t) => {
