@@ -10,6 +10,7 @@ import SettingsPage from './hr/SettingsPage';
 import PayrollModule from './hr/PayrollModule';
 import KpiModule from './hr/KpiModule';
 import HRHome from './hr/HRHome';
+import HelpPage from './HelpPage';
 import Sidebar from './Sidebar';
 import TopHeader from './TopHeader';
 import { Card, Button, cx } from './ui';
@@ -38,14 +39,16 @@ function HRPlaceholder({ label, go }) {
 }
 
 /* ── Root ── */
-/* Portal HR, di-mount pada /hr/*. Menu aktif = segmen URL setelah /hr. */
+/* Portal HR, di-mount pada /hr/*. Menu aktif = segmen URL setelah /hr.
+   /hr/pengaturan dan /hr/bantuan dibuka dari tombol di bawah sidebar, bukan item menu. */
 export default function HRDashboard({ isDark, toggleTheme }) {
   const { profile, signOut } = useAuth();
   const navigate = useNavigate();
   const { '*': sub = '' } = useParams();
   const section = sub.split('/')[0];
   const isSettings = section === 'pengaturan';
-  const activeHrTab = hrMenu.some((m) => m.id === section) ? section : isSettings ? null : 'beranda';
+  const isHelp = section === 'bantuan';
+  const activeHrTab = hrMenu.some((m) => m.id === section) ? section : isSettings || isHelp ? null : 'beranda';
   const setActiveHrTab = (id) => navigate(id === 'beranda' ? '/hr' : `/hr/${id}`);
   const [menuOpen, setMenuOpen] = useState(false);
   const current = hrMenu.find((m) => m.id === activeHrTab);
@@ -70,6 +73,8 @@ export default function HRDashboard({ isDark, toggleTheme }) {
         onLogout={handleLogout}
         open={menuOpen}
         onClose={() => setMenuOpen(false)}
+        onHelp={() => navigate('/hr/bantuan')}
+        helpActive={isHelp}
         extra={
           <button
             type="button"
@@ -99,6 +104,8 @@ export default function HRDashboard({ isDark, toggleTheme }) {
         <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6 lg:py-8">
           {isSettings ? (
             <SettingsPage tab={sub.split('/')[1]} />
+          ) : isHelp ? (
+            <HelpPage role="hr" />
           ) : activeHrTab === 'beranda' ? (
             <HRHome go={setActiveHrTab} />
           ) : activeHrTab === 'profil' ? (

@@ -6,7 +6,7 @@ import { cx, IconButton } from './ui';
  * Sidebar generik untuk portal karyawan & HR.
  * Desktop (lg+): menempel di kiri. Mobile: drawer yang dibuka dari header.
  */
-export default function Sidebar({ items, active, onSelect, subtitle, onLogout, open, onClose, extra }) {
+export default function Sidebar({ items, active, onSelect, subtitle, onLogout, open, onClose, extra, onHelp, helpActive = false }) {
   useEffect(() => {
     if (!open) return undefined;
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
@@ -16,6 +16,11 @@ export default function Sidebar({ items, active, onSelect, subtitle, onLogout, o
 
   const select = (id) => {
     onSelect(id);
+    onClose?.();
+  };
+
+  const openHelp = () => {
+    onHelp?.();
     onClose?.();
   };
 
@@ -74,9 +79,14 @@ export default function Sidebar({ items, active, onSelect, subtitle, onLogout, o
           {extra}
           <button
             type="button"
-            className="flex h-9 w-full items-center gap-3 rounded-lg px-3 text-sm text-muted transition-colors hover:bg-subtle hover:text-fg"
+            onClick={openHelp}
+            aria-current={helpActive ? 'page' : undefined}
+            className={cx(
+              'flex h-9 w-full items-center gap-3 rounded-lg px-3 text-sm transition-colors',
+              helpActive ? 'bg-accent-soft font-medium text-accent-text' : 'text-muted hover:bg-subtle hover:text-fg',
+            )}
           >
-            <LifeBuoy size={18} strokeWidth={1.8} aria-hidden="true" />
+            <LifeBuoy size={18} strokeWidth={helpActive ? 2.1 : 1.8} aria-hidden="true" />
             Bantuan
           </button>
           <button
