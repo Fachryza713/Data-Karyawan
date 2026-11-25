@@ -49,25 +49,40 @@ Aturan akses:
 
 ## 4. Arsitektur dan tech stack
 
-Backend memakai **Supabase**, bukan XAMPP. Alasannya: aplikasi bisa di-demo online lewat satu link, dan Auth, Storage, serta RLS sudah tersedia tanpa perlu menulis REST API sendiri.
+Backend dibangun ulang sebagai **REST API NestJS + PostgreSQL + Prisma**, dengan **Redis/BullMQ** untuk antrean job dan **storage S3-compatible** untuk file. Kodenya ada di `backend/`. Alasannya: project ini portofolio untuk posisi backend, jadi aturan bisnis, otorisasi, dan job latar belakang ditulis sebagai kode TypeScript yang bisa diuji, bukan diserahkan ke RLS dan Postgres function.
 
-&#91;embedded content: arsitektur HRIS · frontend Vercel + Supabase\]
+Versi Supabase (`supabase/`) tetap menjadi referensi aturan bisnis. Frontend `dashboard/` masih memakai Supabase sampai tiap modul dipindah ke API baru.
 
-Browser hanya memegang anon key. Absen, approval, dan payroll lewat function di server (kotak berwarna), sehingga jarak GPS dan angka gaji tidak bisa diubah dari browser.
+```
+Browser (React, dashboard/)
+   │  HTTPS, JSON, JWT (access + refresh)
+   ▼
+NestJS API  /api/v1   ── Swagger /docs, health /health
+   ├── Prisma ───────────► PostgreSQL 16
+   ├── BullMQ ───────────► Redis 7 (antrean: email, payroll, notifikasi)
+   ├── S3 client ────────► S3-compatible storage (MinIO di lokal): avatar, lampiran
+   └── SMTP ─────────────► server email (Mailpit di lokal)
+```
+
+Browser tidak pernah mengakses database langsung. Absen, approval, payroll, dan KPI dijalankan di service NestJS, dan setiap endpoint dicek oleh guard + role dari JWT. Dengan begitu jarak GPS dan angka gaji tidak bisa diubah dari browser.
 
 | Lapisan | Pilihan | Status |
 | --- | --- | --- |
 | UI | React 18, Vite 6, Tailwind 3, lucide-react | Sudah ada |
-| Routing | React Router (usulan, lihat Open questions) | Belum |
-| Data client | `@supabase/supabase-js` v2 | Belum |
-| Database | Supabase Postgres + RLS | Belum |
-| Auth | Supabase Auth (email + password) | Belum |
-| File | Supabase Storage | Belum |
-| Logika server | Postgres functions (RPC) + Edge Functions (Deno) | Belum |
-| Job terjadwal | pg\_cron | Belum |
-| Hosting | Vercel (frontend), Supabase free tier (backend) | Belum |
+| Routing | React Router 6 | Sudah ada |
+| Data client | `@supabase/supabase-js` v2, pindah bertahap ke REST API `/api/v1` | Migrasi |
+| API | NestJS 12 (TypeScript strict), DTO `class-validator`, Swagger/OpenAPI di `/docs` | Fondasi |
+| Database | PostgreSQL 16 lewat Prisma 7; skema hanya diubah dengan `prisma migrate dev`; uang bertipe `Decimal` | Fondasi |
+| Auth | JWT access + refresh token, guard + `@Roles` di server; endpoint karyawan memakai `/me` | Belum |
+| Antrean & cache | Redis 7 + BullMQ (email, hitung payroll, notifikasi) | Fondasi (Redis) |
+| File | Storage S3-compatible (MinIO di lokal) | Fondasi (bucket) |
+| Email | SMTP (Mailpit di lokal) | Fondasi (container) |
+| Observabilitas | Log JSON `nestjs-pino` dengan request id, `GET /health` (PostgreSQL + Redis) | Fondasi |
+| Kualitas | ESLint + Prettier, Jest (unit + e2e), GitHub Actions `backend.yml` | Fondasi |
+| Lingkungan lokal | Docker Compose: postgres, redis, minio, mailpit, api (hot reload) | Fondasi |
+| Hosting | Vercel (frontend); hosting API ditentukan kemudian (image Docker `prod`) | Belum |
 
-XAMPP dipertimbangkan, tapi tidak dipilih: hanya jalan lokal dan butuh backend PHP terpisah untuk auth, upload, dan API.
+XAMPP dipertimbangkan, tapi tidak dipilih: hanya jalan lokal dan butuh backend PHP terpisah untuk auth, upload, dan API. Supabase dipakai di versi pertama karena cepat di-demo, lalu diganti NestJS supaya logika server bisa ditunjukkan dan diuji sebagai kode.
 
 ## 5. Fitur dan user stories
 
