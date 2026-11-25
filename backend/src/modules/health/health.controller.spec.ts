@@ -23,7 +23,10 @@ describe('HealthController', () => {
       providers: [
         DatabaseHealthIndicator,
         RedisHealthIndicator,
-        { provide: PrismaService, useValue: { $queryRaw: queryRaw } },
+        {
+          provide: PrismaService,
+          useValue: { client: { $queryRaw: queryRaw } },
+        },
         { provide: REDIS_CLIENT, useValue: { ping } },
       ],
     }).compile();

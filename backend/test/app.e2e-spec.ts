@@ -16,9 +16,11 @@ describe('Fondasi aplikasi (e2e)', () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(PrismaService)
       .useValue({
-        $queryRaw: queryRaw,
-        $connect: jest.fn(),
-        $disconnect: jest.fn(),
+        client: {
+          $queryRaw: queryRaw,
+          $connect: jest.fn(),
+          $disconnect: jest.fn(),
+        },
       })
       .overrideProvider(REDIS_CLIENT)
       .useValue({ ping, status: 'end', disconnect: jest.fn() })

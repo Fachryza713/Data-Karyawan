@@ -40,6 +40,11 @@ export default tseslint.config(
     },
   },
   {
+    // Skrip CLI (seed, generator ERD) memang menulis ke terminal.
+    files: ['prisma/**/*.ts', 'scripts/**/*.ts'],
+    rules: { 'no-console': 'off' },
+  },
+  {
     files: ['**/*.js'],
     ...tseslint.configs.disableTypeChecked,
   },
