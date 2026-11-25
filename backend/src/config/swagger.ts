@@ -1,6 +1,7 @@
 import type { INestApplication } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { ErrorResponseDto } from '../common/dto/error-response.dto.js';
+import { REFRESH_COOKIE_NAME } from '../modules/auth/auth.constants.js';
 
 export const SWAGGER_PATH = 'docs';
 
@@ -18,6 +19,18 @@ export function setupSwagger(app: INestApplication): void {
       bearerFormat: 'JWT',
       description: 'Access token JWT',
     })
+    .addCookieAuth(
+      REFRESH_COOKIE_NAME,
+      {
+        type: 'apiKey',
+        in: 'cookie',
+        description:
+          'Refresh token httpOnly. Dipasang otomatis oleh POST /auth/login; ' +
+          'Swagger UI di domain yang sama ikut mengirimnya.',
+      },
+      // Nama skema = nama yang dipakai @ApiCookieAuth(REFRESH_COOKIE_NAME).
+      REFRESH_COOKIE_NAME,
+    )
     .build();
 
   const documentFactory = () =>

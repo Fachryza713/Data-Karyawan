@@ -37,6 +37,18 @@ describe('validateEnv', () => {
     expect(env.NODE_ENV).toBe('development');
     expect(env.LOG_LEVEL).toBe('info');
     expect(env.TZ).toBe('Asia/Jakarta');
+    expect(env.AUTH_COOKIE_SAMESITE).toBe('lax');
+  });
+
+  it('menolak AUTH_COOKIE_SAMESITE di luar lax/strict/none', () => {
+    const error = captureError({
+      ...validEnv(),
+      AUTH_COOKIE_SAMESITE: 'None!',
+    });
+
+    expect(error.message).toContain(
+      'AUTH_COOKIE_SAMESITE: harus salah satu dari lax, strict, none',
+    );
   });
 
   it('mendaftar semua variabel yang kurang sekaligus', () => {

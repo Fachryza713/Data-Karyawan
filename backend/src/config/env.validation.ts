@@ -56,6 +56,14 @@ export const envSchema = z
     MAIL_FROM: z.string().min(3, REQUIRED),
 
     FRONTEND_URL: urlWithProtocol(/^https?$/, 'http(s)://host'),
+    // SameSite cookie refresh token. Pakai "none" jika frontend dan API beda
+    // site (beda domain); cookie lalu otomatis Secure. "lax" cukup untuk
+    // localhost:5173 -> localhost:3000 (port tidak membuat beda site).
+    AUTH_COOKIE_SAMESITE: z
+      .enum(['lax', 'strict', 'none'], {
+        error: 'harus salah satu dari lax, strict, none',
+      })
+      .default('lax'),
     TZ: z.string().refine(isValidTimeZone, 'zona waktu IANA tidak dikenal'),
   })
   .refine((env) => env.JWT_ACCESS_SECRET !== env.JWT_REFRESH_SECRET, {

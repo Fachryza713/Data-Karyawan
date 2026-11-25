@@ -16,5 +16,5 @@ export default {
   transform: {
     '^.+\\.ts$': ['ts-jest', { useESM: true }],
   },
-  setupFiles: ['<rootDir>/test/setup-env.ts'],
+  setupFiles: ['<rootDir>/test/setup-env.ts', '<rootDir>/test/preload-cjs.ts'],
 };

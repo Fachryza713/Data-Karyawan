@@ -10,12 +10,14 @@ import {
   ApiServiceUnavailableResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import { Public } from '../../common/decorators/public.decorator.js';
 import { ErrorResponseDto } from '../../common/dto/error-response.dto.js';
 import { HealthResponseDto } from './dto/health-response.dto.js';
 import { DatabaseHealthIndicator } from './indicators/database.health.js';
 import { RedisHealthIndicator } from './indicators/redis.health.js';
 
 @ApiTags('Health')
+@Public()
 @Controller('health')
 export class HealthController {
   constructor(
