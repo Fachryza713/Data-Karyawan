@@ -1,0 +1,18 @@
+// Skema database HRIS Blue Rose Tech.
+//
+// Aturan:
+// - Perubahan skema hanya lewat `npx prisma migrate dev --name <nama>`.
+//   Jangan edit migrasi yang sudah ada dan jangan ubah database secara manual.
+// - Kolom uang memakai tipe Decimal (Prisma.Decimal di kode), tidak pernah Float.
+//
+// URL koneksi diambil dari DATABASE_URL lewat prisma.config.ts.
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "esm"
+}
+
+datasource db {
+  provider = "postgresql"
+}
