@@ -13,7 +13,7 @@ export class DatabaseHealthIndicator {
     return this.indicators
       .check(key)
       .attempt(async () => {
-        await this.prisma.$queryRaw`SELECT 1`;
+        await this.prisma.client.$queryRaw`SELECT 1`;
       })
       .withTimeout(1000);
   }

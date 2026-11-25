@@ -4,15 +4,223 @@
 // - Perubahan skema hanya lewat `npx prisma migrate dev --name <nama>`.
 //   Jangan edit migrasi yang sudah ada dan jangan ubah database secara manual.
 // - Kolom uang memakai tipe Decimal (Prisma.Decimal di kode), tidak pernah Float.
+// - Nama model/field camelCase di kode, snake_case di database (@map/@@map).
+// - id = UUIDv7 (urut waktu, index B-tree tidak terfragmentasi), dibuat Prisma Client.
+// - Timestamp memakai timestamptz; tanggal kalender (lahir, masuk, libur) memakai date.
+// - CHECK constraint (format NIP, jam shift, koordinat) ada di SQL migrasi
+//   karena Prisma Schema belum bisa menuliskannya.
 //
+// Modul transaksi (absensi, cuti, payroll, KPI) ditambahkan di migrasi masing-masing.
 // URL koneksi diambil dari DATABASE_URL lewat prisma.config.ts.
 
 generator client {
-  provider     = "prisma-client"
-  output       = "../src/generated/prisma"
-  moduleFormat = "esm"
+  provider        = "prisma-client"
+  output          = "../src/generated/prisma"
+  moduleFormat    = "esm"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
-  provider = "postgresql"
+  provider   = "postgresql"
+  // pg_trgm: index GIN untuk pencarian nama/NIP dengan ILIKE '%kata%'.
+  extensions = [pg_trgm]
+}
+
+// ---------------------------------------------------------------------------
+// Enum
+// ---------------------------------------------------------------------------
+
+enum Role {
+  HR
+  EMPLOYEE
+
+  @@map("role")
+}
+
+enum Gender {
+  MALE
+  FEMALE
+
+  @@map("gender")
+}
+
+enum EmploymentStatus {
+  PERMANENT
+  CONTRACT
+
+  @@map("employment_status")
+}
+
+// ---------------------------------------------------------------------------
+// Akun dan karyawan
+// ---------------------------------------------------------------------------
+
+/// Akun login. Email disimpan huruf kecil (dicek CHECK constraint).
+model User {
+  id           String    @id @default(uuid(7)) @db.Uuid
+  email        String    @unique
+  passwordHash String    @map("password_hash")
+  role         Role      @default(EMPLOYEE)
+  isActive     Boolean   @default(true) @map("is_active")
+  lastLoginAt  DateTime? @map("last_login_at") @db.Timestamptz(3)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  employee  Employee?
+  auditLogs AuditLog[]
+
+  @@map("users")
+}
+
+/// Data karyawan, satu per akun. Soft delete lewat deletedAt: query lewat
+/// PrismaService.client otomatis mengabaikan baris yang sudah dihapus.
+model Employee {
+  id               String           @id @default(uuid(7)) @db.Uuid
+  userId           String           @unique @map("user_id") @db.Uuid
+  /// Format BRT-YYYY-NNNN, huruf besar (dicek CHECK constraint).
+  nip              String           @unique
+  fullName         String           @map("full_name")
+  phone            String?
+  gender           Gender?
+  birthDate        DateTime?        @map("birth_date") @db.Date
+  /// Object key foto di storage S3 (bukan URL publik).
+  photoKey         String?          @map("photo_key")
+  departmentId     String           @map("department_id") @db.Uuid
+  positionId       String           @map("position_id") @db.Uuid
+  officeLocationId String           @map("office_location_id") @db.Uuid
+  shiftId          String           @map("shift_id") @db.Uuid
+  joinDate         DateTime         @map("join_date") @db.Date
+  employmentStatus EmploymentStatus @map("employment_status")
+  deletedAt        DateTime?        @map("deleted_at") @db.Timestamptz(3)
+  createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user           User           @relation(fields: [userId], references: [id], onDelete: Restrict)
+  department     Department     @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  position       Position       @relation(fields: [positionId], references: [id], onDelete: Restrict)
+  officeLocation OfficeLocation @relation(fields: [officeLocationId], references: [id], onDelete: Restrict)
+  shift          Shift          @relation(fields: [shiftId], references: [id], onDelete: Restrict)
+
+  // Filter daftar karyawan per departemen (selalu bersama deleted_at IS NULL).
+  @@index([departmentId, deletedAt])
+  @@index([deletedAt])
+  // Index foreign key lain (JOIN dan cek ON DELETE RESTRICT).
+  @@index([positionId])
+  @@index([officeLocationId])
+  @@index([shiftId])
+  // Pencarian sebagian kata (ILIKE '%...%'), tidak bisa memakai B-tree.
+  @@index([fullName(ops: raw("gin_trgm_ops"))], map: "employees_full_name_trgm_idx", type: Gin)
+  @@index([nip(ops: raw("gin_trgm_ops"))], map: "employees_nip_trgm_idx", type: Gin)
+  @@map("employees")
+}
+
+// ---------------------------------------------------------------------------
+// Master data organisasi
+// ---------------------------------------------------------------------------
+
+model Department {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  name      String   @unique
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  positions Position[]
+  employees Employee[]
+
+  @@map("departments")
+}
+
+/// Jabatan milik satu departemen. Nama unik di dalam departemennya.
+model Position {
+  id           String   @id @default(uuid(7)) @db.Uuid
+  name         String
+  departmentId String   @map("department_id") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  department Department @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  employees  Employee[]
+
+  // Kolom pertama index unik ini juga melayani foreign key department_id.
+  @@unique([departmentId, name])
+  @@map("positions")
+}
+
+/// Titik kantor untuk validasi jarak presensi GPS.
+model OfficeLocation {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  name      String   @unique
+  latitude  Decimal  @db.Decimal(9, 6)
+  longitude Decimal  @db.Decimal(9, 6)
+  radiusM   Int      @default(100) @map("radius_m")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  employees Employee[]
+
+  @@map("office_locations")
+}
+
+/// Jam kerja dalam WIB, disimpan sebagai teks "HH:mm".
+model Shift {
+  id               String   @id @default(uuid(7)) @db.Uuid
+  name             String   @unique
+  startTime        String   @map("start_time") @db.Char(5)
+  endTime          String   @map("end_time") @db.Char(5)
+  lateToleranceMin Int      @default(15) @map("late_tolerance_min")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  employees Employee[]
+
+  @@map("shifts")
+}
+
+/// Hari libur nasional (tidak dihitung hari kerja).
+model Holiday {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  date      DateTime @unique @db.Date
+  name      String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("holidays")
+}
+
+// ---------------------------------------------------------------------------
+// Sistem
+// ---------------------------------------------------------------------------
+
+/// Jejak perubahan data. Hanya ditambah, tidak pernah diubah (tanpa updatedAt).
+model AuditLog {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  /// Null untuk aksi sistem (job terjadwal, seed).
+  actorId   String?  @map("actor_id") @db.Uuid
+  /// Contoh: employee.create, employee.soft_delete.
+  action    String
+  /// Nama model yang berubah, contoh: Employee.
+  entity    String
+  /// Teks, bukan uuid: CompanySetting memakai key sebagai id.
+  entityId  String   @map("entity_id")
+  before    Json?
+  after     Json?
+  ip        String?
+  userAgent String?  @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([entity, entityId])
+  @@index([actorId])
+  @@map("audit_logs")
+}
+
+/// Pengaturan perusahaan (key/value), contoh hr_contact.
+model CompanySetting {
+  key       String   @id
+  value     Json
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("company_settings")
 }

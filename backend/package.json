@@ -26,7 +26,9 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
-    "prisma:studio": "prisma studio"
+    "db:seed": "prisma db seed",
+    "prisma:studio": "prisma studio",
+    "erd": "node scripts/generate-erd.ts"
   },
   "dependencies": {
     "@nestjs/common": "^12.0.1",
@@ -37,6 +39,7 @@
     "@nestjs/terminus": "^12.2.0",
     "@prisma/adapter-pg": "7.10.1",
     "@prisma/client": "7.10.1",
+    "argon2": "^0.45.2",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
     "helmet": "^8.3.0",
@@ -50,6 +53,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@mrleebo/prisma-ast": "^0.16.0",
     "@nestjs/cli": "^12.0.0",
     "@nestjs/schematics": "^12.0.0",
     "@nestjs/testing": "^12.0.1",
@@ -57,6 +61,7 @@
     "@types/jest": "^30.0.0",
     "@types/node": "^24.0.0",
     "@types/supertest": "^7.0.0",
+    "@viz-js/viz": "^3.31.0",
     "dotenv": "^18.0.10",
     "eslint": "^10.15.0",
     "eslint-config-prettier": "^10.1.8",
@@ -67,6 +72,7 @@
     "source-map-support": "^0.5.21",
     "supertest": "^7.0.0",
     "ts-jest": "^29.4.15",
+    "tsx": "^4.23.15",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.74.0"
   },
@@ -74,6 +80,8 @@
     "prisma@7.10.1": true,
     "@prisma/engines@7.10.1": true,
     "@scarf/scarf": false,
-    "@parcel/watcher": false
+    "@parcel/watcher": false,
+    "argon2": false,
+    "esbuild": false
   }
 }
