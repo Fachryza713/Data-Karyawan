@@ -66,8 +66,10 @@ model User {
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt    DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  employee  Employee?
-  auditLogs AuditLog[]
+  employee            Employee?
+  auditLogs           AuditLog[]
+  refreshTokens       RefreshToken[]
+  passwordResetTokens PasswordResetToken[]
 
   @@map("users")
 }
@@ -112,6 +114,55 @@ model Employee {
   @@index([fullName(ops: raw("gin_trgm_ops"))], map: "employees_full_name_trgm_idx", type: Gin)
   @@index([nip(ops: raw("gin_trgm_ops"))], map: "employees_nip_trgm_idx", type: Gin)
   @@map("employees")
+}
+
+// ---------------------------------------------------------------------------
+// Sesi dan reset password
+// ---------------------------------------------------------------------------
+
+/// Refresh token (opaque, 256-bit acak). Yang disimpan hanya hash SHA-256.
+/// Setiap refresh membuat token baru dalam family yang sama; token lama
+/// dicabut dan menunjuk penggantinya. Token tercabut yang dipakai lagi
+/// (reuse) mencabut seluruh family.
+model RefreshToken {
+  id           String    @id @default(uuid(7)) @db.Uuid
+  userId       String    @map("user_id") @db.Uuid
+  /// SHA-256 hex dari token mentah.
+  tokenHash    String    @unique @map("token_hash") @db.Char(64)
+  /// Satu family = satu sesi login (berubah hanya saat login ulang).
+  familyId     String    @map("family_id") @db.Uuid
+  expiresAt    DateTime  @map("expires_at") @db.Timestamptz(3)
+  revokedAt    DateTime? @map("revoked_at") @db.Timestamptz(3)
+  replacedById String?   @unique @map("replaced_by_id") @db.Uuid
+  userAgent    String?   @map("user_agent")
+  ip           String?
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  replacedBy RefreshToken? @relation("RefreshTokenRotation", fields: [replacedById], references: [id], onDelete: SetNull)
+  replaces   RefreshToken? @relation("RefreshTokenRotation")
+
+  @@index([userId])
+  @@index([familyId])
+  @@map("refresh_tokens")
+}
+
+/// Token reset password sekali pakai. Yang disimpan hanya hash SHA-256.
+model PasswordResetToken {
+  id        String    @id @default(uuid(7)) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  /// SHA-256 hex dari token mentah.
+  tokenHash String    @unique @map("token_hash") @db.Char(64)
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(3)
+  usedAt    DateTime? @map("used_at") @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_reset_tokens")
 }
 
 // ---------------------------------------------------------------------------

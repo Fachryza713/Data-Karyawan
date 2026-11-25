@@ -1,13 +1,15 @@
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { NestExpressApplication } from '@nestjs/platform-express';
+import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js';
 import { requestIdMiddleware } from './common/http/request-id.js';
+import { API_PREFIX } from './config/api-prefix.js';
 import type { Env } from './config/env.validation.js';
 import { setupSwagger } from './config/swagger.js';
 
-export const API_PREFIX = 'api/v1';
+export { API_PREFIX };
 
 /**
  * Konfigurasi global aplikasi. Dipakai main.ts dan test e2e supaya
@@ -20,6 +22,8 @@ export function configureApp(app: NestExpressApplication): void {
   // error apa pun terjadi.
   app.use(requestIdMiddleware);
   app.use(helmet());
+  // Refresh token dibaca dari cookie httpOnly (endpoint /auth).
+  app.use(cookieParser());
   app.enableCors({
     // Array (bukan string) supaya origin lain tidak mendapat header
     // Access-Control-Allow-Origin sama sekali.

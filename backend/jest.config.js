@@ -17,6 +17,7 @@ export default {
   transform: {
     '^.+\\.ts$': ['ts-jest', { useESM: true }],
   },
+  setupFiles: ['<rootDir>/../test/preload-cjs.ts'],
   collectCoverageFrom: [
     '**/*.ts',
     '!**/*.spec.ts',

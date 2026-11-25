@@ -18,6 +18,11 @@ export function createPrismaClient(connectionString: string) {
 
 export type AppPrismaClient = ReturnType<typeof createPrismaClient>;
 
+/** Klien di dalam `client.$transaction(async (tx) => ...)`. */
+export type AppTransactionClient = Parameters<
+  Parameters<AppPrismaClient['$transaction']>[0]
+>[0];
+
 /**
  * Pemilik koneksi Prisma untuk Nest. Semua query memakai `client`, yang sudah
  * memasang extension (soft delete Employee). PrismaClient polos sengaja tidak
