@@ -15,6 +15,20 @@ export const PHONE_PATTERN = /^\+?[0-9][0-9 -]{7,19}$/;
 /** Panjang maksimal nama lengkap karyawan. */
 export const FULL_NAME_MAX_LENGTH = 100;
 
+/**
+ * Nomor WhatsApp untuk link wa.me: 62 lalu nomor tanpa 0 di depan,
+ * total 10-14 digit, tanpa +, spasi, atau strip. Contoh 6281234567890.
+ * Sama dengan CHECK company_settings_contact_valid di versi Supabase.
+ */
+export const WHATSAPP_PATTERN = /^62[1-9]\d{7,11}$/;
+
+/**
+ * Email kontak yang dipakai langsung di link mailto:, jadi lebih ketat
+ * dari IsEmail (tanpa ?, &, spasi). Sama dengan versi Supabase.
+ */
+export const CONTACT_EMAIL_PATTERN =
+  /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
+
 /** Jam 24 jam "HH:mm" (WIB), contoh 08:30. */
 export const TIME_HHMM_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 

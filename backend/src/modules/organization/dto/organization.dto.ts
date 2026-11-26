@@ -1,28 +1,11 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Transform } from 'class-transformer';
-import { composePropertyDecorators } from '../../../common/decorators/compose.js';
-import {
-  IsOptional,
-  IsString,
-  IsUUID,
-  MaxLength,
-  MinLength,
-} from 'class-validator';
+import { IsOptional, IsUUID } from 'class-validator';
 import { NamedRefDto } from '../../../common/dto/named-ref.dto.js';
+import {
+  MASTER_NAME_MAX_LENGTH,
+  NameField,
+} from '../../../common/validation/fields.js';
 import { OptionalNonNull } from '../../../common/validation/validators.js';
-import { MASTER_NAME_MAX_LENGTH } from '../organization.constants.js';
-
-const NameField = () =>
-  composePropertyDecorators(
-    Transform(({ value }: { value: unknown }) =>
-      typeof value === 'string' ? value.trim() : value,
-    ),
-    IsString({ message: 'Nama harus berupa teks' }),
-    MinLength(1, { message: 'Nama wajib diisi' }),
-    MaxLength(MASTER_NAME_MAX_LENGTH, {
-      message: `Nama maksimal ${MASTER_NAME_MAX_LENGTH} karakter`,
-    }),
-  );
 
 const UuidField = () => IsUUID('all', { message: '$property harus UUID' });
 

@@ -9,6 +9,7 @@ import { EmployeesModule } from './modules/employees/employees.module.js';
 import { HealthModule } from './modules/health/health.module.js';
 import { MailModule } from './modules/mail/mail.module.js';
 import { OrganizationModule } from './modules/organization/organization.module.js';
+import { SettingsModule } from './modules/settings/settings.module.js';
 import { StorageModule } from './modules/storage/storage.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { RedisModule } from './redis/redis.module.js';
@@ -33,6 +34,7 @@ import { RedisModule } from './redis/redis.module.js';
     AuthModule,
     EmployeesModule,
     OrganizationModule,
+    SettingsModule,
     HealthModule,
   ],
 })

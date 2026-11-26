@@ -86,6 +86,13 @@ export const HR_CONTACT = {
   hours: 'Senin-Jumat 08:30-17:30 WIB',
 } as const;
 
+/** Kontak admin sistem untuk halaman Bantuan HR. */
+export const ADMIN_CONTACT = {
+  email: 'it@bluerose.test',
+  whatsapp: '6281200000001',
+  hours: 'Senin-Jumat 09:00-17:00 WIB',
+} as const;
+
 export type SeedEmployee = {
   nip: string;
   fullName: string;
