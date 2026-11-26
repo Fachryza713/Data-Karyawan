@@ -3,8 +3,12 @@ import { ConfigService } from '@nestjs/config';
 import type { ClientMeta } from '../../common/decorators/client-meta.decorator.js';
 import { normalizeEmail } from '../../common/validation/formats.js';
 import type { Env } from '../../config/env.validation.js';
-import { PrismaService } from '../../prisma/prisma.service.js';
+import {
+  type AppTransactionClient,
+  PrismaService,
+} from '../../prisma/prisma.service.js';
 import { AuditService } from '../audit/audit.service.js';
+import { escapeHtml } from '../mail/escape-html.js';
 import { MailService } from '../mail/mail.service.js';
 import { canHoldSession } from './account-policy.js';
 import {
@@ -16,13 +20,6 @@ import { generateOpaqueToken, hashPassword, hashToken } from './auth.crypto.js';
 import { RefreshTokenService } from './refresh-token.service.js';
 
 const RESET_TTL_MINUTES = PASSWORD_RESET_TTL_MS / 60_000;
-
-const escapeHtml = (text: string) =>
-  text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
 
 @Injectable()
 export class PasswordResetService {
@@ -72,23 +69,11 @@ export class PasswordResetService {
       return false;
     }
 
-    const now = new Date();
-    const token = generateOpaqueToken();
-    await this.prisma.client.$transaction(async (tx) => {
-      await tx.passwordResetToken.updateMany({
-        where: { userId: user.id, usedAt: null },
-        data: { usedAt: now },
-      });
-      await tx.passwordResetToken.create({
-        data: {
-          userId: user.id,
-          tokenHash: hashToken(token),
-          expiresAt: new Date(now.getTime() + PASSWORD_RESET_TTL_MS),
-        },
-      });
-    });
+    const token = await this.prisma.client.$transaction((tx) =>
+      this.issueToken(user.id, PASSWORD_RESET_TTL_MS, tx),
+    );
 
-    const link = this.resetLink(token);
+    const link = this.passwordLink(token);
     const name = user.employee?.fullName ?? user.email;
     await this.mail.send({
       to: user.email,
@@ -111,6 +96,32 @@ export class PasswordResetService {
         '<p>Abaikan email ini jika Anda tidak memintanya.</p>',
     });
     return true;
+  }
+
+  /**
+   * Buat token set password sekali pakai yang berlaku `ttlMs`, dan batalkan
+   * token lama user yang belum dipakai. Dipakai juga oleh undangan karyawan
+   * baru. Mengembalikan token mentah (yang disimpan hanya hash-nya).
+   */
+  async issueToken(
+    userId: string,
+    ttlMs: number,
+    tx: AppTransactionClient,
+  ): Promise<string> {
+    const now = new Date();
+    const token = generateOpaqueToken();
+    await tx.passwordResetToken.updateMany({
+      where: { userId, usedAt: null },
+      data: { usedAt: now },
+    });
+    await tx.passwordResetToken.create({
+      data: {
+        userId,
+        tokenHash: hashToken(token),
+        expiresAt: new Date(now.getTime() + ttlMs),
+      },
+    });
+    return token;
   }
 
   /**
@@ -179,8 +190,11 @@ export class PasswordResetService {
     });
   }
 
-  /** FRONTEND_URL/update-password?token=... (path FRONTEND_URL dipertahankan). */
-  private resetLink(token: string): string {
+  /**
+   * Link halaman set password: FRONTEND_URL/update-password?token=...
+   * (path FRONTEND_URL dipertahankan). Dipakai reset password dan undangan.
+   */
+  passwordLink(token: string): string {
     const base = this.frontendUrl.replace(/\/+$/, '');
     return `${base}/update-password?token=${encodeURIComponent(token)}`;
   }

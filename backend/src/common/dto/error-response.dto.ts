@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 /** Format error seragam untuk semua endpoint. */
 export class ErrorResponseDto {
@@ -24,4 +24,14 @@ export class ErrorResponseDto {
 
   @ApiProperty({ example: '6f1c2f0e-8f0a-4f1b-9a51-2f7a4c1d9e3b' })
   requestId: string;
+
+  @ApiPropertyOptional({
+    type: 'object',
+    additionalProperties: true,
+    example: { employeeCount: 3 },
+    description:
+      'Data tambahan untuk sebagian error, contoh jumlah karyawan yang masih ' +
+      'memakai departemen saat hapus ditolak (409).',
+  })
+  details?: Record<string, unknown>;
 }

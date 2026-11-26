@@ -6,6 +6,15 @@
 /** NIP karyawan: BRT-YYYY-NNNN, contoh BRT-2024-0001. */
 export const NIP_PATTERN = /^BRT-\d{4}-\d{4}$/;
 
+/**
+ * Nomor telepon: boleh diawali +, lalu angka, spasi, atau strip (8-20
+ * karakter). Sama dengan aturan update_my_profile di versi Supabase.
+ */
+export const PHONE_PATTERN = /^\+?[0-9][0-9 -]{7,19}$/;
+
+/** Panjang maksimal nama lengkap karyawan. */
+export const FULL_NAME_MAX_LENGTH = 100;
+
 /** Jam 24 jam "HH:mm" (WIB), contoh 08:30. */
 export const TIME_HHMM_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 

@@ -2,7 +2,7 @@
 
 REST API untuk HRIS Blue Rose Tech: NestJS 12 (TypeScript strict, ESM) + PostgreSQL 16 + Prisma 7, Redis 7 (BullMQ), storage S3-compatible, dan SMTP. Konteks fitur ada di PRD (`../PRD — HRIS Blue Rose Tech.md`).
 
-Status: **fondasi + skema inti + auth**. Yang sudah ada: validasi env, logging, format error, Swagger, health check, Docker, CI, skema database inti (akun, karyawan, master organisasi, libur, audit log, pengaturan), seed data demo, ERD, serta auth (login JWT, refresh token berotasi, lupa/reset password, guard role, rate limit).
+Status: **fondasi + skema inti + auth + data karyawan**. Yang sudah ada: validasi env, logging, format error, Swagger, health check, Docker, CI, skema database inti (akun, karyawan, master organisasi, libur, audit log, pengaturan), seed data demo, ERD, auth (login JWT, refresh token berotasi, lupa/reset password, guard role, rate limit), serta data karyawan (CRUD HR dengan soft delete/restore dan email undangan, master departemen/jabatan, profil sendiri dan foto lewat presigned URL, audit log `@Audit`).
 
 ## Menjalankan
 
@@ -105,24 +105,26 @@ backend/
 │   ├── common/
 │   │   ├── auth/               tipe AuthUser dan payload access token
 │   │   ├── throttler/          storage Redis untuk @nestjs/throttler
-│   │   ├── validation/         format bersama (NIP, jam HH:mm, email)
+│   │   ├── validation/         format bersama (NIP, telepon, tanggal YYYY-MM-DD) dan validator DTO
 │   │   ├── filters/            AllExceptionsFilter (format error + error Prisma)
 │   │   ├── http/               request id
-│   │   ├── dto/                ErrorResponseDto
+│   │   ├── dto/                ErrorResponseDto, pagination, NamedRefDto
 │   │   ├── guards/             JwtAuthGuard, RolesGuard (global)
 │   │   ├── decorators/         @Public, @Roles, @CurrentUser, @RequestClientMeta
 │   │   └── interceptors/
 │   ├── prisma/                 PrismaModule global, PrismaService, extension soft delete
 │   ├── redis/                  klien Redis global
-│   ├── modules/                modul fitur: auth, audit, mail, health
+│   ├── modules/                modul fitur: auth, audit, mail, storage, employees, organization, health
 │   └── generated/prisma/       hasil prisma generate (tidak di-commit)
-└── test/                       test e2e
+└── test/                       test e2e dan fixtures/ (data mock bersama unit test)
 ```
 
 ## Konvensi
 
 - **API**: semua endpoint di bawah `/api/v1`, kecuali `GET /health`. Semua endpoint didokumentasikan di Swagger.
-- **Error**: selalu `{ statusCode, error, message, path, timestamp, requestId }`. Error Prisma `P2002` menjadi 409, `P2025` menjadi 404, error lain menjadi 500 tanpa detail (detail hanya di log).
+- **Error**: selalu `{ statusCode, error, message, path, timestamp, requestId }`, plus `details` untuk sebagian error (contoh jumlah pemakai saat hapus ditolak 409). Error Prisma `P2002` dan `P2003` menjadi 409, `P2025` menjadi 404, error lain menjadi 500 tanpa detail (detail hanya di log).
+- **Daftar**: endpoint list memakai `?page=&limit=` (limit maksimal 100) dan membalas `{ data, meta: { page, limit, total, totalPages } }`.
+- **Response**: dibentuk lewat DTO keluaran dari `select` eksplisit, bukan objek Prisma mentah. File di storage dikirim sebagai presigned URL (`photoUrl`), bukan object key.
 - **Request id**: header `X-Request-Id` dari klien dipakai jika aman, selain itu dibuat UUID. Nilainya sama di header respons, body error, dan log.
 - **Validasi**: semua input lewat DTO `class-validator`. `ValidationPipe` global memakai `whitelist`, `forbidNonWhitelisted`, dan `transform`.
 - **Otorisasi**: dicek di server dengan guard dan `@Roles`. Endpoint karyawan memakai `/me` dan mengambil ID dari JWT, bukan dari parameter.
@@ -200,6 +202,41 @@ Semua endpoint wajib login (guard global `JwtAuthGuard`), kecuali diberi `@Publi
 @Get('employees')
 list(@CurrentUser() user: AuthUser) { ... }
 ```
+
+## Data karyawan
+
+| Endpoint (`/api/v1/...`)             | Akses | Fungsi                                                                  |
+| ------------------------------------ | ----- | ----------------------------------------------------------------------- |
+| `GET employees`                      | HR    | Pagination, `search` (nama/NIP/email), filter departemen/jabatan/status |
+| `GET employees/:id`                  | HR    | Detail, termasuk karyawan nonaktif                                      |
+| `POST employees`                     | HR    | Buat User + Employee (satu transaksi), kirim email undangan             |
+| `PATCH employees/:id`                | HR    | Ubah data karyawan aktif                                                |
+| `DELETE employees/:id`               | HR    | Soft delete: `deletedAt`, akun nonaktif, semua refresh token dicabut    |
+| `POST employees/:id/restore`         | HR    | Pulihkan karyawan nonaktif                                              |
+| `GET/POST/PATCH/DELETE departments`  | HR    | Master departemen; hapus ditolak 409 jika masih dipakai                 |
+| `GET/POST/PATCH/DELETE positions`    | HR    | Master jabatan; hapus/pindah departemen ditolak 409 jika masih dipakai  |
+| `GET employees/me`                   | semua | Data karyawan yang login                                                |
+| `PATCH employees/me`                 | semua | Hanya `fullName`, `phone`, `gender`, `birthDate`                        |
+| `POST employees/me/photo/upload-url` | semua | Presigned POST foto (JPG/PNG, maks. 2 MB)                               |
+| `PATCH employees/me/photo`           | semua | Konfirmasi foto yang sudah diunggah, hapus foto lama                    |
+
+- **NIP** `BRT-YYYY-NNNN` (disimpan huruf besar) dan **email** unik. NIP dicek terhadap semua karyawan, termasuk yang nonaktif. Jabatan harus milik departemen karyawan.
+- **Undangan**: akun baru diberi password acak, lalu email berisi link `FRONTEND_URL/update-password?token=...` (token `PasswordResetToken`, 72 jam, sekali pakai). Diselesaikan lewat `POST /auth/reset-password`. Jika email gagal, karyawan tetap dibuat (`invitationSent: false`) dan bisa memakai "Lupa password".
+- **Soft delete**: karyawan nonaktif tidak muncul di daftar default (`status=inactive` untuk melihatnya), tidak bisa login atau refresh, dan riwayatnya tetap ada. HR tidak bisa menonaktifkan akunnya sendiri.
+- **Foto**: bucket privat. Server mengecek tipe dan ukuran sebelum membuat URL; policy presigned POST mengunci `Content-Type` dan ukuran 1..2 MB di storage. Saat konfirmasi, key harus `employees/<id-sendiri>/avatar-<uuid>` dan isi file dicek (magic bytes JPG/PNG); file yang tidak lolos dihapus. `S3_PUBLIC_ENDPOINT` mengatur host presigned URL jika berbeda dari `S3_ENDPOINT` (Docker: `http://localhost:9000`).
+
+### Audit log
+
+Endpoint yang mengubah data diberi `@Audit('employee.update')`. `AuditInterceptor` (global) menyiapkan konteks request (aksi, actor dari JWT, IP, user agent) lewat `AsyncLocalStorage`, lalu service mencatat perubahannya di transaksi yang sama:
+
+```ts
+await this.audit.recordChange(
+  { entity: 'Employee', entityId: id, before, after },
+  tx,
+);
+```
+
+`before`/`after` hanya berisi field yang berubah. Key yang mengandung `password`, `token`, `secret`, atau `hash` selalu dibuang sebelum disimpan. Aksi yang dicatat: `employee.create|update|delete|restore|self_update|photo_update`, `department.create|update|delete`, `position.create|update|delete`.
 
 ## Image produksi
 

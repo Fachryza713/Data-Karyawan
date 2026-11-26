@@ -14,6 +14,7 @@ import type { ErrorResponseDto } from '../dto/error-response.dto.js';
 interface ResolvedError {
   statusCode: number;
   message: string | string[];
+  details?: Record<string, unknown>;
 }
 
 const INTERNAL_MESSAGE = 'Terjadi kesalahan pada server';
@@ -23,7 +24,10 @@ const INTERNAL_MESSAGE = 'Terjadi kesalahan pada server';
  * { statusCode, error, message, path, timestamp, requestId }.
  *
  * - HttpException (termasuk error ValidationPipe) memakai status dan pesannya.
- * - Error Prisma P2002 (unique) menjadi 409, P2025 (record tidak ada) menjadi 404.
+ *   Objek `details` di response exception ikut diteruskan, contoh
+ *   `new ConflictException({ message, details: { employeeCount: 3 } })`.
+ * - Error Prisma P2002 (unique) dan P2003 (masih direferensikan) menjadi 409,
+ *   P2025 (record tidak ada) menjadi 404.
  * - Error lain menjadi 500 tanpa membocorkan detail; detailnya hanya di log.
  */
 @Catch()
@@ -35,7 +39,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const req = ctx.getRequest<Request>();
     const res = ctx.getResponse<Response>();
 
-    const { statusCode, message } = this.resolve(exception);
+    const { statusCode, message, details } = this.resolve(exception);
 
     // HttpException 5xx dilempar dengan sengaja (mis. 503 health check);
     // yang perlu stack trace hanya error tak terduga.
@@ -54,6 +58,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
       path: req.originalUrl ?? req.url,
       timestamp: new Date().toISOString(),
       requestId: typeof req.id === 'string' ? req.id : '',
+      ...(details && { details }),
     };
 
     res.status(statusCode).json(body);
@@ -64,6 +69,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
       return {
         statusCode: exception.getStatus(),
         message: this.httpMessage(exception),
+        details: httpDetails(exception),
       };
     }
 
@@ -105,6 +111,11 @@ export class AllExceptionsFilter implements ExceptionFilter {
             : 'Data yang sama sudah ada',
         };
       }
+      case 'P2003':
+        return {
+          statusCode: HttpStatus.CONFLICT,
+          message: 'Data masih dipakai oleh data lain',
+        };
       case 'P2025':
         return {
           statusCode: HttpStatus.NOT_FOUND,
@@ -137,6 +148,21 @@ function uniqueFields(meta: Record<string, unknown> | undefined): string[] {
     { cause?: { constraint?: { fields?: unknown } } } | undefined;
   const fields = adapterError?.cause?.constraint?.fields;
   return isStringArray(fields) ? fields : [];
+}
+
+function httpDetails(
+  exception: HttpException,
+): Record<string, unknown> | undefined {
+  const response = exception.getResponse();
+  if (typeof response !== 'object' || response === null) {
+    return undefined;
+  }
+  const { details } = response as { details?: unknown };
+  return typeof details === 'object' &&
+    details !== null &&
+    !Array.isArray(details)
+    ? (details as Record<string, unknown>)
+    : undefined;
 }
 
 function isStringArray(value: unknown): value is string[] {

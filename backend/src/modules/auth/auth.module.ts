@@ -60,5 +60,7 @@ import { RefreshTokenService } from './refresh-token.service.js';
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
   ],
+  // Dipakai modul karyawan: undangan set password dan cabut sesi saat nonaktif.
+  exports: [PasswordResetService, RefreshTokenService],
 })
 export class AuthModule {}
