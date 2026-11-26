@@ -26,13 +26,21 @@ export function toDateOnly(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
-/** Tanggal hari ini di WIB, "YYYY-MM-DD". */
-export function todayDateOnly(now = new Date()): string {
+/**
+ * Tanggal kalender WIB dari sebuah waktu, "YYYY-MM-DD". Nilai kolom
+ * @db.Date (tengah malam UTC = 07:00 WIB) tetap menjadi tanggal yang sama.
+ */
+export function toWibDateOnly(date: Date): string {
   // Locale en-CA memformat tanggal sebagai YYYY-MM-DD.
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: APP_TIME_ZONE,
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-  }).format(now);
+  }).format(date);
+}
+
+/** Tanggal hari ini di WIB, "YYYY-MM-DD". */
+export function todayDateOnly(now = new Date()): string {
+  return toWibDateOnly(now);
 }

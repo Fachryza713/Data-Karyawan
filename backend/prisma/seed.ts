@@ -22,6 +22,7 @@ import {
 } from '../src/common/validation/formats.js';
 import { Prisma, PrismaClient } from '../src/generated/prisma/client.js';
 import {
+  ADMIN_CONTACT,
   DEPARTMENTS,
   EMPLOYEES,
   HEAD_OFFICE,
@@ -193,6 +194,11 @@ async function main(): Promise<void> {
           where: { key: 'hr_contact' },
           update: {},
           create: { key: 'hr_contact', value: HR_CONTACT },
+        });
+        await tx.companySetting.upsert({
+          where: { key: 'admin_contact' },
+          update: {},
+          create: { key: 'admin_contact', value: ADMIN_CONTACT },
         });
       },
       { timeout: 60_000 },

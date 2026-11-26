@@ -13,5 +13,3 @@ export const OrganizationMessages = {
   positionNotFound: 'Jabatan tidak ditemukan',
   positionNameTaken: 'Jabatan dengan nama ini sudah ada di departemen tersebut',
 } as const;
-
-export const MASTER_NAME_MAX_LENGTH = 100;

@@ -2,7 +2,7 @@
 
 REST API untuk HRIS Blue Rose Tech: NestJS 12 (TypeScript strict, ESM) + PostgreSQL 16 + Prisma 7, Redis 7 (BullMQ), storage S3-compatible, dan SMTP. Konteks fitur ada di PRD (`../PRD — HRIS Blue Rose Tech.md`).
 
-Status: **fondasi + skema inti + auth + data karyawan**. Yang sudah ada: validasi env, logging, format error, Swagger, health check, Docker, CI, skema database inti (akun, karyawan, master organisasi, libur, audit log, pengaturan), seed data demo, ERD, auth (login JWT, refresh token berotasi, lupa/reset password, guard role, rate limit), serta data karyawan (CRUD HR dengan soft delete/restore dan email undangan, master departemen/jabatan, profil sendiri dan foto lewat presigned URL, audit log `@Audit`).
+Status: **fondasi + skema inti + auth + data karyawan + pengaturan HR**. Yang sudah ada: validasi env, logging, format error, Swagger, health check, Docker, CI, skema database inti (akun, karyawan, master organisasi, libur, audit log, pengaturan), seed data demo, ERD, auth (login JWT, refresh token berotasi, lupa/reset password, guard role, rate limit), serta data karyawan (CRUD HR dengan soft delete/restore dan email undangan, master departemen/jabatan, profil sendiri dan foto lewat presigned URL, audit log `@Audit`), dan pengaturan HR (lokasi kantor, shift, hari libur, kontak bantuan, kalender hari kerja `HolidayService`).
 
 ## Menjalankan
 
@@ -236,7 +236,35 @@ await this.audit.recordChange(
 );
 ```
 
-`before`/`after` hanya berisi field yang berubah. Key yang mengandung `password`, `token`, `secret`, atau `hash` selalu dibuang sebelum disimpan. Aksi yang dicatat: `employee.create|update|delete|restore|self_update|photo_update`, `department.create|update|delete`, `position.create|update|delete`.
+`before`/`after` hanya berisi field yang berubah. Key yang mengandung `password`, `token`, `secret`, atau `hash` selalu dibuang sebelum disimpan. Aksi yang dicatat: `employee.create|update|delete|restore|self_update|photo_update`, `department.create|update|delete`, `position.create|update|delete`, `office_location.create|update|delete`, `shift.create|update|delete`, `holiday.create|delete`, `company_setting.update`.
+
+## Pengaturan HR
+
+| Endpoint (`/api/v1/...`)                 | Akses | Fungsi                                                                   |
+| ---------------------------------------- | ----- | ------------------------------------------------------------------------ |
+| `GET/POST/PATCH/DELETE office-locations` | HR    | Titik kantor: latitude -90..90, longitude -180..180, `radiusM` 25-1000   |
+| `GET/POST/PATCH/DELETE shifts`           | HR    | Jam `HH:mm` WIB, `endTime` setelah `startTime`, `lateToleranceMin` 0-120 |
+| `GET holidays?year=2026`                 | semua | Hari libur urut tanggal; tanpa `year` = semua tahun                      |
+| `POST holidays`, `DELETE holidays/:id`   | HR    | Satu tanggal hanya satu hari libur (409)                                 |
+| `GET settings/hr-contact`                | semua | Kontak HR untuk halaman Bantuan karyawan                                 |
+| `GET settings/admin-contact`             | semua | Kontak admin sistem untuk halaman Bantuan HR                             |
+| `PUT settings/hr-contact\|admin-contact` | HR    | Ganti seluruh kontak: `email`, `whatsapp` (`62xxxxxxxxx`), `hours`       |
+
+- **Hapus lokasi/shift** ditolak 409 jika masih dipakai karyawan, termasuk yang nonaktif (datanya tetap merujuk lewat foreign key). Jumlahnya ada di `details.employeeCount`.
+- **Koordinat** dibulatkan ke 6 angka di belakang koma (kolom `Decimal(9, 6)`, sekitar 0,1 meter). Nama lokasi dan shift unik tanpa membedakan huruf besar/kecil.
+- **Shift** belum mendukung lintas tengah malam. `PATCH` yang hanya mengirim satu jam dicek terhadap jam yang tersimpan.
+- Batas radius, toleransi, dan format kontak juga dijaga CHECK constraint di database (migrasi `settings_limits`).
+
+### Hari kerja
+
+`HolidayService` (diekspor `SettingsModule`) dipakai modul absensi, cuti, dan payroll:
+
+```ts
+await holidays.isWorkingDay('2026-08-17'); // false: Senin, libur nasional
+await holidays.workingDaysBetween('2026-08-14', '2026-08-18'); // 2
+```
+
+Hari kerja = Senin-Jumat yang bukan hari libur. Rentang inklusif di kedua ujung; `start` setelah `end` menghasilkan 0. Input berupa `'YYYY-MM-DD'` atau `Date`; `Date` dibaca sebagai tanggal WIB, jadi waktu presensi `2026-11-26T18:00Z` dihitung tanggal 27 November, dan nilai kolom `@db.Date` tetap tanggal yang sama.
 
 ## Image produksi
 
