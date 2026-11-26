@@ -1,8 +1,10 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { LoggerModule } from 'nestjs-pino';
 import { validateEnv, type Env } from './config/env.validation.js';
 import { buildLoggerParams } from './config/logger.config.js';
+import { AttendanceModule } from './modules/attendance/attendance.module.js';
 import { AuditModule } from './modules/audit/audit.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
 import { EmployeesModule } from './modules/employees/employees.module.js';
@@ -26,6 +28,8 @@ import { RedisModule } from './redis/redis.module.js';
       useFactory: (config: ConfigService<Env, true>) =>
         buildLoggerParams(config),
     }),
+    // Job terjadwal (penandaan alpa 23:59 WIB).
+    ScheduleModule.forRoot(),
     PrismaModule,
     RedisModule,
     AuditModule,
@@ -35,6 +39,7 @@ import { RedisModule } from './redis/redis.module.js';
     EmployeesModule,
     OrganizationModule,
     SettingsModule,
+    AttendanceModule,
     HealthModule,
   ],
 })
