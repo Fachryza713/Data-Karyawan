@@ -160,6 +160,36 @@ describe('AllExceptionsFilter', () => {
     });
   });
 
+  it('menerjemahkan Prisma P2003 (foreign key masih dipakai) menjadi 409', () => {
+    const { body } = run(prismaError('P2003'));
+
+    expect(body).toMatchObject({
+      statusCode: 409,
+      message: 'Data masih dipakai oleh data lain',
+    });
+  });
+
+  it('meneruskan details dari HttpException', () => {
+    const { body } = run(
+      new ConflictException({
+        message: 'Departemen masih dipakai',
+        details: { employeeCount: 3 },
+      }),
+    );
+
+    expect(body).toMatchObject({
+      statusCode: 409,
+      message: 'Departemen masih dipakai',
+      details: { employeeCount: 3 },
+    });
+  });
+
+  it('tidak menambah details jika exception tidak punya', () => {
+    const { body } = run(new NotFoundException('Tidak ada'));
+
+    expect(body).not.toHaveProperty('details');
+  });
+
   it('error Prisma lain menjadi 500 tanpa membocorkan detail', () => {
     const { body } = run(prismaError('P2010'));
 

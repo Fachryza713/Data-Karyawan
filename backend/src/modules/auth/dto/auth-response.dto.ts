@@ -4,6 +4,7 @@ import {
   Gender,
   Role,
 } from '../../../generated/prisma/enums.js';
+import { NamedRefDto, ShiftRefDto } from '../../../common/dto/named-ref.dto.js';
 
 // Response sengaja dibentuk manual dari `select` yang eksplisit:
 // passwordHash tidak pernah ikut terbaca, apalagi terkirim.
@@ -37,25 +38,6 @@ export class LoginResponseDto {
 export class MessageResponseDto {
   @ApiProperty()
   message: string;
-}
-
-export class NamedRefDto {
-  @ApiProperty({ format: 'uuid' })
-  id: string;
-
-  @ApiProperty()
-  name: string;
-}
-
-export class ShiftRefDto extends NamedRefDto {
-  @ApiProperty({ example: '08:30' })
-  startTime: string;
-
-  @ApiProperty({ example: '17:30' })
-  endTime: string;
-
-  @ApiProperty({ example: 15 })
-  lateToleranceMin: number;
 }
 
 export class MeEmployeeDto {

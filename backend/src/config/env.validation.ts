@@ -42,6 +42,14 @@ export const envSchema = z
     JWT_REFRESH_SECRET: secret,
 
     S3_ENDPOINT: urlWithProtocol(/^https?$/, 'http(s)://host:port'),
+    // Alamat storage yang bisa dibuka browser, untuk presigned URL. Isi jika
+    // berbeda dari S3_ENDPOINT, misalnya API di Docker memakai http://minio:9000
+    // sementara browser membuka http://localhost:9000. Default: S3_ENDPOINT.
+    S3_PUBLIC_ENDPOINT: urlWithProtocol(
+      /^https?$/,
+      'http(s)://host:port',
+    ).optional(),
+    S3_REGION: z.string().min(1, REQUIRED).default('us-east-1'),
     S3_BUCKET: z
       .string()
       .regex(

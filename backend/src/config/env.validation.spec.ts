@@ -38,6 +38,23 @@ describe('validateEnv', () => {
     expect(env.LOG_LEVEL).toBe('info');
     expect(env.TZ).toBe('Asia/Jakarta');
     expect(env.AUTH_COOKIE_SAMESITE).toBe('lax');
+    expect(env.S3_REGION).toBe('us-east-1');
+    expect(env.S3_PUBLIC_ENDPOINT).toBeUndefined();
+  });
+
+  it('menerima S3_PUBLIC_ENDPOINT dan menolak yang bukan URL http(s)', () => {
+    expect(
+      validateEnv({
+        ...validEnv(),
+        S3_PUBLIC_ENDPOINT: 'http://localhost:9000',
+      }).S3_PUBLIC_ENDPOINT,
+    ).toBe('http://localhost:9000');
+
+    const error = captureError({
+      ...validEnv(),
+      S3_PUBLIC_ENDPOINT: 'localhost:9000',
+    });
+    expect(error.message).toContain('S3_PUBLIC_ENDPOINT: harus berupa URL');
   });
 
   it('menolak AUTH_COOKIE_SAMESITE di luar lax/strict/none', () => {

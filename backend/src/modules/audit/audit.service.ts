@@ -1,9 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import type { Prisma } from '../../generated/prisma/client.js';
 import {
   type AppTransactionClient,
   PrismaService,
 } from '../../prisma/prisma.service.js';
+import { auditContext } from './audit-context.js';
+import { sanitizeForAudit } from './audit-sanitize.js';
 
 export type AuditEntry = {
   /** Null untuk aksi tanpa user yang dikenal (misalnya login email asing). */
@@ -12,10 +13,20 @@ export type AuditEntry = {
   action: string;
   entity: string;
   entityId: string;
-  before?: Prisma.InputJsonValue;
-  after?: Prisma.InputJsonValue;
+  /** Disaring sanitizeForAudit: password, hash, dan token tidak ikut tersimpan. */
+  before?: unknown;
+  after?: unknown;
   ip?: string | null;
   userAgent?: string | null;
+};
+
+/** Perubahan data dari service; aksi, actor, IP, dan user agent dari @Audit. */
+export type AuditChange = {
+  /** Nama model, contoh Employee. */
+  entity: string;
+  entityId: string;
+  before?: unknown;
+  after?: unknown;
 };
 
 /** Penulis AuditLog. Kirim `tx` supaya log ikut transaksi perubahan datanya. */
@@ -31,11 +42,30 @@ export class AuditService {
         action: entry.action,
         entity: entry.entity,
         entityId: entry.entityId,
-        before: entry.before,
-        after: entry.after,
+        before: sanitizeForAudit(entry.before),
+        after: sanitizeForAudit(entry.after),
         ip: entry.ip ?? null,
         userAgent: entry.userAgent ?? null,
       },
     });
+  }
+
+  /**
+   * Catat perubahan dari endpoint ber-@Audit. Aksi, actor, IP, dan user agent
+   * diambil dari konteks request (AuditInterceptor). Melempar error jika
+   * dipanggil di luar endpoint ber-@Audit, supaya log tanpa actor tidak
+   * tertulis diam-diam.
+   */
+  async recordChange(
+    change: AuditChange,
+    tx?: AppTransactionClient,
+  ): Promise<void> {
+    const context = auditContext.current();
+    if (!context) {
+      throw new Error(
+        `Audit ${change.entity} dicatat di luar endpoint @Audit(...)`,
+      );
+    }
+    await this.record({ ...context, ...change }, tx);
   }
 }
