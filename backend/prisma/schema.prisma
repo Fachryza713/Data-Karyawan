@@ -51,6 +51,29 @@ enum EmploymentStatus {
   @@map("employment_status")
 }
 
+/// Tempat kerja saat absen. WFH dan BUSINESS_TRIP hanya dengan izin yang disetujui.
+enum AttendanceMode {
+  OFFICE
+  WFH
+  BUSINESS_TRIP
+
+  @@map("attendance_mode")
+}
+
+/// ON_TIME/LATE/EARLY_LEAVE = hadir (ada clockInAt). LEAVE/SICK/PERMIT diisi
+/// modul cuti, ABSENT diisi job harian 23:59 WIB.
+enum AttendanceStatus {
+  ON_TIME
+  LATE
+  EARLY_LEAVE
+  LEAVE
+  SICK
+  PERMIT
+  ABSENT
+
+  @@map("attendance_status")
+}
+
 // ---------------------------------------------------------------------------
 // Akun dan karyawan
 // ---------------------------------------------------------------------------
@@ -102,6 +125,7 @@ model Employee {
   position       Position       @relation(fields: [positionId], references: [id], onDelete: Restrict)
   officeLocation OfficeLocation @relation(fields: [officeLocationId], references: [id], onDelete: Restrict)
   shift          Shift          @relation(fields: [shiftId], references: [id], onDelete: Restrict)
+  attendances    Attendance[]
 
   // Filter daftar karyawan per departemen (selalu bersama deleted_at IS NULL).
   @@index([departmentId, deletedAt])
@@ -236,6 +260,48 @@ model Holiday {
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@map("holidays")
+}
+
+// ---------------------------------------------------------------------------
+// Absensi
+// ---------------------------------------------------------------------------
+
+/// Satu baris per karyawan per tanggal WIB. Baris hadir dibuat clock-in;
+/// baris tanpa clockInAt (cuti, sakit, izin, alpa) dibuat modul lain atau job.
+/// Koordinat dan akurasi disimpan untuk audit HR (fake GPS tidak bisa dicegah
+/// sepenuhnya dari web). Jarak selalu dihitung server.
+model Attendance {
+  id                String           @id @default(uuid(7)) @db.Uuid
+  employeeId        String           @map("employee_id") @db.Uuid
+  /// Tanggal kalender WIB.
+  date              DateTime         @db.Date
+  clockInAt         DateTime?        @map("clock_in_at") @db.Timestamptz(3)
+  clockInLat        Decimal?         @map("clock_in_lat") @db.Decimal(9, 6)
+  clockInLng        Decimal?         @map("clock_in_lng") @db.Decimal(9, 6)
+  /// Jarak ke titik kantor (meter, dibulatkan).
+  clockInDistanceM  Int?             @map("clock_in_distance_m")
+  /// Akurasi GPS dari browser (meter).
+  clockInAccuracyM  Decimal?         @map("clock_in_accuracy_m") @db.Decimal(6, 1)
+  clockOutAt        DateTime?        @map("clock_out_at") @db.Timestamptz(3)
+  clockOutLat       Decimal?         @map("clock_out_lat") @db.Decimal(9, 6)
+  clockOutLng       Decimal?         @map("clock_out_lng") @db.Decimal(9, 6)
+  clockOutDistanceM Int?             @map("clock_out_distance_m")
+  clockOutAccuracyM Decimal?         @map("clock_out_accuracy_m") @db.Decimal(6, 1)
+  /// Null untuk baris tanpa absen (cuti, sakit, izin, alpa).
+  mode              AttendanceMode?
+  status            AttendanceStatus
+  /// Menit setelah jam masuk shift. Tetap tersimpan walau status jadi EARLY_LEAVE.
+  lateMinutes       Int              @default(0) @map("late_minutes")
+  createdAt         DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  // Mencegah absen ganda; kolom pertama juga melayani foreign key employee_id.
+  @@unique([employeeId, date])
+  // Log dan ringkasan HR per tanggal.
+  @@index([date, status])
+  @@map("attendances")
 }
 
 // ---------------------------------------------------------------------------

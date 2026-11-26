@@ -2,6 +2,7 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
 import { PaginationQueryDto } from '../../../common/dto/pagination.dto.js';
+import { toSearchTerm } from '../../../common/validation/fields.js';
 import { UuidField } from './employee-fields.js';
 
 export const EMPLOYEE_STATUS_FILTERS = ['active', 'inactive'] as const;
@@ -17,13 +18,6 @@ export type EmployeeSortField = (typeof EMPLOYEE_SORT_FIELDS)[number];
 
 export const SORT_ORDERS = ['asc', 'desc'] as const;
 export type SortOrder = (typeof SORT_ORDERS)[number];
-
-/** Spasi di tepi dibuang; teks kosong dianggap tidak mencari. */
-const toSearchTerm = ({ value }: { value: unknown }) => {
-  if (typeof value !== 'string') return value;
-  const trimmed = value.trim();
-  return trimmed === '' ? undefined : trimmed;
-};
 
 export class ListEmployeesQueryDto extends PaginationQueryDto {
   @ApiPropertyOptional({

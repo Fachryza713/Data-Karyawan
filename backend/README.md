@@ -2,7 +2,7 @@
 
 REST API untuk HRIS Blue Rose Tech: NestJS 12 (TypeScript strict, ESM) + PostgreSQL 16 + Prisma 7, Redis 7 (BullMQ), storage S3-compatible, dan SMTP. Konteks fitur ada di PRD (`../PRD — HRIS Blue Rose Tech.md`).
 
-Status: **fondasi + skema inti + auth + data karyawan + pengaturan HR**. Yang sudah ada: validasi env, logging, format error, Swagger, health check, Docker, CI, skema database inti (akun, karyawan, master organisasi, libur, audit log, pengaturan), seed data demo, ERD, auth (login JWT, refresh token berotasi, lupa/reset password, guard role, rate limit), serta data karyawan (CRUD HR dengan soft delete/restore dan email undangan, master departemen/jabatan, profil sendiri dan foto lewat presigned URL, audit log `@Audit`), dan pengaturan HR (lokasi kantor, shift, hari libur, kontak bantuan, kalender hari kerja `HolidayService`).
+Status: **fondasi + skema inti + auth + data karyawan + pengaturan HR + absensi**. Yang sudah ada: validasi env, logging, format error, Swagger, health check, Docker, CI, skema database inti (akun, karyawan, master organisasi, libur, audit log, pengaturan), seed data demo, ERD, auth (login JWT, refresh token berotasi, lupa/reset password, guard role, rate limit), serta data karyawan (CRUD HR dengan soft delete/restore dan email undangan, master departemen/jabatan, profil sendiri dan foto lewat presigned URL, audit log `@Audit`), dan pengaturan HR (lokasi kantor, shift, hari libur, kontak bantuan, kalender hari kerja `HolidayService`), dan absensi GPS (clock-in/out dengan radius kantor, log dan ekspor CSV HR, job alpa harian).
 
 ## Menjalankan
 
@@ -265,6 +265,40 @@ await holidays.workingDaysBetween('2026-08-14', '2026-08-18'); // 2
 ```
 
 Hari kerja = Senin-Jumat yang bukan hari libur. Rentang inklusif di kedua ujung; `start` setelah `end` menghasilkan 0. Input berupa `'YYYY-MM-DD'` atau `Date`; `Date` dibaca sebagai tanggal WIB, jadi waktu presensi `2026-11-26T18:00Z` dihitung tanggal 27 November, dan nilai kolom `@db.Date` tetap tanggal yang sama.
+
+## Absensi
+
+| Endpoint (`/api/v1/...`)           | Akses    | Fungsi                                                                                       |
+| ---------------------------------- | -------- | -------------------------------------------------------------------------------------------- |
+| `POST attendances/me/clock-in`     | EMPLOYEE | Absen masuk, body `{ lat, lng, accuracy }`                                                   |
+| `POST attendances/me/clock-out`    | EMPLOYEE | Absen pulang, body sama                                                                      |
+| `GET attendances/me/today`         | EMPLOYEE | Absen hari ini, shift, kantor, izin WFH/dinas hari ini                                       |
+| `GET attendances/me?month=YYYY-MM` | EMPLOYEE | Riwayat sebulan + ringkasan (hadir, terlambat, pulang cepat, cuti, alpa)                     |
+| `GET attendances`                  | HR       | Log: `date` atau `from`-`to` (maks. 93 hari), `departmentId`, `status`, `search`, pagination |
+| `GET attendances/summary?date=`    | HR       | Jumlah karyawan per status untuk satu tanggal                                                |
+| `GET attendances/export`           | HR       | CSV (UTF-8 + BOM) dengan filter yang sama, di-stream per 500 baris                           |
+
+Hanya akun role `EMPLOYEE` yang absen dan muncul di log, sama dengan versi Supabase (HR tidak absen).
+
+**Aturan absen** (PRD 6.1, `AttendanceService`):
+
+1. Waktu diambil dari server (`Clock`), tanggal dan jam dihitung di Asia/Jakarta. Client hanya mengirim `lat`, `lng`, `accuracy`; field lain ditolak 400.
+2. Ditolak 422 jika `accuracy` > 100 m atau hari itu bukan hari kerja (`HolidayService.isWorkingDay`).
+3. Jarak ke titik kantor dihitung server (`GeoService.haversineMeters`, dibulatkan ke meter). Ada izin WFH/dinas yang disetujui (`RemoteWorkPolicy`): diterima dengan mode izinnya, koordinat dan jarak tetap disimpan. Tanpa izin dan jarak > radius: 422 dengan `details: { distanceM, radiusM }`. Tepat di tepi radius masih diterima.
+4. Masuk paling lambat jam masuk shift + toleransi = `ON_TIME`, selain itu `LATE` dengan `lateMinutes` dihitung dari jam masuk (minimal 1). Pulang sebelum jam pulang shift = `EARLY_LEAVE` (`lateMinutes` tetap tersimpan).
+5. Absen ganda: unique `(employeeId, date)` di database. Dua request bersamaan menghasilkan satu baris; yang kalah mendapat 409 "Anda sudah absen masuk hari ini" (P2002 ditangkap). Pulang ganda dicegah `update ... where clockOutAt IS NULL`. Pulang tanpa absen masuk: 422.
+
+`RemoteWorkPolicy` untuk sementara selalu `null` (`NoRemoteWorkPolicy`). Modul pengajuan WFH/dinas cukup mengganti provider `REMOTE_WORK_POLICY` di `AttendanceModule`.
+
+**Log HR satu tanggal** menampilkan semua karyawan yang sudah mulai bekerja (`joinDate`), termasuk yang belum absen dengan status `NOT_YET`; karyawan yang sudah keluar hanya muncul di tanggal yang punya catatan. **Rentang** hanya menampilkan baris yang ada.
+
+**Job alpa**: `AbsenceJob` (`@nestjs/schedule`) jalan setiap hari 23:59 WIB. Di hari kerja, karyawan aktif tanpa baris absensi ditandai `ABSENT` dengan `createMany({ skipDuplicates: true })`, jadi aman dijalankan ulang. Lock Redis per tanggal (`SET NX PX`, 15 menit, `RedisLockService`) memastikan hanya satu instance yang menjalankannya; lock tidak dilepas setelah berhasil supaya instance dengan jam sedikit terlambat tidak mengulang, dan dilepas jika gagal. Jika Redis tidak tersedia, job dilewati dan dicatat di log.
+
+### Fake GPS
+
+Fake GPS tidak bisa dicegah sepenuhnya dari aplikasi web. Browser hanya meneruskan koordinat dari sistem operasi, dan aplikasi pemalsu lokasi (atau DevTools > Sensors) bisa mengisi nilai apa pun, termasuk akurasi yang tampak bagus. Server tidak punya cara memverifikasi bahwa koordinat itu asli.
+
+Mitigasinya adalah jejak audit untuk HR: setiap absen menyimpan koordinat mentah, akurasi GPS, jarak yang dihitung server, dan waktu server untuk masuk dan pulang. HR bisa melihatnya di log dan ekspor CSV untuk menemukan pola janggal, misalnya koordinat identik setiap hari atau akurasi selalu bulat. Jarak dan waktu tidak pernah diterima dari client, jadi yang bisa dipalsukan hanya posisi, bukan perhitungannya.
 
 ## Image produksi
 

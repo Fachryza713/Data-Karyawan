@@ -8,8 +8,11 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { Redis } from 'ioredis';
 import type { Env } from '../config/env.validation.js';
+import { REDIS_CLIENT } from './redis.constants.js';
+import { RedisLockService } from './redis-lock.service.js';
 
-export const REDIS_CLIENT = Symbol('REDIS_CLIENT');
+// Di file terpisah supaya RedisLockService bisa memakainya tanpa import melingkar.
+export { REDIS_CLIENT };
 
 function createRedisClient(config: ConfigService<Env, true>): Redis {
   const logger = new Logger('Redis');
@@ -45,8 +48,9 @@ function createRedisClient(config: ConfigService<Env, true>): Redis {
       inject: [ConfigService],
       useFactory: createRedisClient,
     },
+    RedisLockService,
   ],
-  exports: [REDIS_CLIENT],
+  exports: [REDIS_CLIENT, RedisLockService],
 })
 export class RedisModule implements OnApplicationShutdown {
   constructor(@Inject(REDIS_CLIENT) private readonly redis: Redis) {}
