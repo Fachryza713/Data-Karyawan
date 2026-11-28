@@ -12,6 +12,7 @@ import { HealthModule } from './modules/health/health.module.js';
 import { LeaveModule } from './modules/leave/leave.module.js';
 import { MailModule } from './modules/mail/mail.module.js';
 import { OrganizationModule } from './modules/organization/organization.module.js';
+import { PayrollModule } from './modules/payroll/payroll.module.js';
 import { SettingsModule } from './modules/settings/settings.module.js';
 import { StorageModule } from './modules/storage/storage.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
@@ -42,6 +43,7 @@ import { RedisModule } from './redis/redis.module.js';
     SettingsModule,
     LeaveModule,
     AttendanceModule,
+    PayrollModule,
     HealthModule,
   ],
 })

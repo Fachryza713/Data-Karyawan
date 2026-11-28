@@ -204,6 +204,53 @@ export const EMPLOYEES: readonly SeedEmployee[] = [
   ),
 ];
 
+/**
+ * Gaji contoh per NIP (rupiah sebagai teks, bukan number): gaji pokok,
+ * tunjangan tetap, bank, 4 digit terakhir rekening, jumlah tanggungan.
+ * Angka 28 karyawan fiktif sama dengan supabase/seed-demo.sql.
+ */
+export type SeedSalary = readonly [
+  baseSalary: string,
+  fixedAllowance: string,
+  bankName: string,
+  bankAccountLast4: string,
+  dependents: number,
+];
+
+// prettier-ignore
+export const SALARIES: Readonly<Record<string, SeedSalary>> = {
+  'BRT-2021-0001': ['17500000', '2500000', 'Mandiri', '4410', 1],
+  'BRT-2024-0001': ['12000000', '3850000', 'BCA', '8821', 2],
+  'BRT-2022-0101': ['13500000', '1500000', 'BCA', '7919', 2],
+  'BRT-2023-0102': ['12000000', '1500000', 'Mandiri', '5838', 0],
+  'BRT-2021-0103': ['7500000', '1000000', 'BNI', '3757', 1],
+  'BRT-2024-0104': ['10500000', '1250000', 'BCA', '1676', 0],
+  'BRT-2025-0105': ['6500000', '750000', 'BRI', '9595', 0],
+  'BRT-2020-0106': ['8500000', '1000000', 'Mandiri', '7514', 2],
+  'BRT-2023-0107': ['7800000', '1000000', 'BCA', '5433', 1],
+  'BRT-2024-0108': ['7000000', '750000', 'BNI', '3352', 0],
+  'BRT-2018-0109': ['23000000', '3000000', 'BCA', '1271', 3],
+  'BRT-2019-0110': ['9500000', '1000000', 'Mandiri', '9190', 2],
+  'BRT-2022-0111': ['8800000', '1000000', 'BRI', '7109', 1],
+  'BRT-2021-0112': ['8200000', '1000000', 'BCA', '5028', 1],
+  'BRT-2024-0113': ['6800000', '750000', 'BNI', '2947', 0],
+  'BRT-2022-0114': ['8000000', '1500000', 'BCA', '0866', 1],
+  'BRT-2023-0115': ['7600000', '1500000', 'Mandiri', '8785', 0],
+  'BRT-2020-0116': ['14000000', '2000000', 'BCA', '6704', 2],
+  'BRT-2023-0117': ['8500000', '1000000', 'BRI', '4623', 0],
+  'BRT-2025-0118': ['6800000', '750000', 'BNI', '2542', 0],
+  'BRT-2017-0119': ['21000000', '3000000', 'Mandiri', '0461', 3],
+  'BRT-2021-0120': ['6500000', '750000', 'BRI', '8380', 2],
+  'BRT-2019-0121': ['6800000', '750000', 'BRI', '6299', 2],
+  'BRT-2024-0122': ['5800000', '500000', 'BCA', '4218', 0],
+  'BRT-2022-0123': ['6500000', '750000', 'Mandiri', '2137', 1],
+  'BRT-2019-0124': ['22000000', '3000000', 'BCA', '0056', 2],
+  'BRT-2022-0125': ['11000000', '1250000', 'BNI', '7975', 0],
+  'BRT-2023-0126': ['10000000', '1250000', 'Mandiri', '5894', 0],
+  'BRT-2021-0127': ['11500000', '1250000', 'BCA', '3813', 1],
+  'BRT-2024-0128': ['9000000', '1000000', 'BRI', '1732', 0],
+};
+
 /** Email kantor fiktif: dua kata pertama nama, huruf kecil. */
 export function officeEmail(employee: SeedEmployee): string {
   if (employee.demoEmail) return employee.demoEmail;

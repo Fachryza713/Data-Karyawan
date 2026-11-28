@@ -96,6 +96,7 @@ model User {
   refreshTokens         RefreshToken[]
   passwordResetTokens   PasswordResetToken[]
   reviewedLeaveRequests LeaveRequest[]
+  finalizedPayrolls     PayrollPeriod[]
 
   @@map("users")
 }
@@ -123,14 +124,17 @@ model Employee {
   createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt        DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  user           User           @relation(fields: [userId], references: [id], onDelete: Restrict)
-  department     Department     @relation(fields: [departmentId], references: [id], onDelete: Restrict)
-  position       Position       @relation(fields: [positionId], references: [id], onDelete: Restrict)
-  officeLocation OfficeLocation @relation(fields: [officeLocationId], references: [id], onDelete: Restrict)
-  shift          Shift          @relation(fields: [shiftId], references: [id], onDelete: Restrict)
+  user           User              @relation(fields: [userId], references: [id], onDelete: Restrict)
+  department     Department        @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  position       Position          @relation(fields: [positionId], references: [id], onDelete: Restrict)
+  officeLocation OfficeLocation    @relation(fields: [officeLocationId], references: [id], onDelete: Restrict)
+  shift          Shift             @relation(fields: [shiftId], references: [id], onDelete: Restrict)
   attendances    Attendance[]
   leaveBalances  LeaveBalance[]
   leaveRequests  LeaveRequest[]
+  salaries       SalaryStructure[]
+  benefits       Benefit[]
+  payrollItems   PayrollItem[]
 
   // Filter daftar karyawan per departemen (selalu bersama deleted_at IS NULL).
   @@index([departmentId, deletedAt])
@@ -409,6 +413,158 @@ model LeaveRequest {
   @@index([leaveTypeId])
   @@index([reviewedById])
   @@map("leave_requests")
+}
+
+// ---------------------------------------------------------------------------
+// Gaji, manfaat, dan payroll
+// ---------------------------------------------------------------------------
+
+/// Program BPJS yang tarifnya diatur di PayrollConfig.
+enum PayrollConfigKey {
+  BPJS_KES
+  JHT
+  JP
+  JKK
+  JKM
+
+  @@map("payroll_config_key")
+}
+
+/// DRAFT -> FINAL -> PAID. FINAL bisa dibuka kembali ke DRAFT; PAID final.
+enum PayrollPeriodStatus {
+  DRAFT
+  FINAL
+  PAID
+
+  @@map("payroll_period_status")
+}
+
+enum BenefitStatus {
+  ACTIVE
+  INACTIVE
+
+  @@map("benefit_status")
+}
+
+/// Struktur gaji karyawan. Hanya ditambah, tidak pernah diubah: kenaikan
+/// gaji = baris baru dengan effectiveFrom baru. Yang berlaku untuk satu
+/// tanggal = effectiveFrom terbaru <= tanggal itu (yang dibuat terakhir jika sama).
+model SalaryStructure {
+  id               String   @id @default(uuid(7)) @db.Uuid
+  employeeId       String   @map("employee_id") @db.Uuid
+  baseSalary       Decimal  @map("base_salary") @db.Decimal(15, 2)
+  fixedAllowance   Decimal  @default(0) @map("fixed_allowance") @db.Decimal(15, 2)
+  bankName         String   @map("bank_name")
+  /// Hanya 4 digit terakhir rekening yang disimpan.
+  bankAccountLast4 String   @map("bank_account_last4") @db.Char(4)
+  effectiveFrom    DateTime @map("effective_from") @db.Date
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  // Riwayat per karyawan dan pencarian struktur yang berlaku.
+  @@index([employeeId, effectiveFrom])
+  @@map("salary_structures")
+}
+
+/// BPJS dan asuransi swasta milik karyawan.
+model Benefit {
+  id         String        @id @default(uuid(7)) @db.Uuid
+  employeeId String        @map("employee_id") @db.Uuid
+  /// Contoh: BPJS Kesehatan, BPJS Ketenagakerjaan, Asuransi Kesehatan Kumpulan.
+  provider   String
+  /// Contoh: JKN; JHT, JKK, JKM, JP.
+  program    String?
+  cardNo     String?       @map("card_no")
+  /// Kelas rawat atau plan, contoh Kelas 1, Plan A.
+  class      String?
+  dependents Int           @default(0)
+  status     BenefitStatus @default(ACTIVE)
+  createdAt  DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt  DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  @@index([employeeId])
+  @@map("benefits")
+}
+
+/// Tarif BPJS per program. Tarif berupa pecahan (0.0100 = 1%). Perubahan
+/// tarif/batas upah = baris baru dengan effectiveFrom baru; baris lama tetap.
+/// Periode payroll memakai baris terbaru dengan effectiveFrom <= awal bulan.
+model PayrollConfig {
+  id            String           @id @default(uuid(7)) @db.Uuid
+  key           PayrollConfigKey
+  employeeRate  Decimal          @map("employee_rate") @db.Decimal(7, 4)
+  employerRate  Decimal          @map("employer_rate") @db.Decimal(7, 4)
+  /// Batas atas dasar upah. Null = tanpa batas.
+  wageCap       Decimal?         @map("wage_cap") @db.Decimal(15, 2)
+  effectiveFrom DateTime         @map("effective_from") @db.Date
+  createdAt     DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([key, effectiveFrom])
+  @@map("payroll_configs")
+}
+
+/// Satu payroll per bulan ("YYYY-MM").
+model PayrollPeriod {
+  id            String              @id @default(uuid(7)) @db.Uuid
+  period        String              @unique @db.Char(7)
+  status        PayrollPeriodStatus @default(DRAFT)
+  finalizedById String?             @map("finalized_by_id") @db.Uuid
+  finalizedAt   DateTime?           @map("finalized_at") @db.Timestamptz(3)
+  paidAt        DateTime?           @map("paid_at") @db.Timestamptz(3)
+  createdAt     DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  finalizedBy User?         @relation(fields: [finalizedById], references: [id], onDelete: Restrict)
+  items       PayrollItem[]
+
+  @@index([finalizedById])
+  @@map("payroll_periods")
+}
+
+/// Slip gaji satu karyawan di satu periode. Semua angka dan data karyawan
+/// adalah snapshot saat payroll dijalankan; slip FINAL/PAID tidak pernah
+/// dihitung ulang dari data gaji yang sekarang.
+model PayrollItem {
+  id                    String   @id @default(uuid(7)) @db.Uuid
+  periodId              String   @map("period_id") @db.Uuid
+  employeeId            String   @map("employee_id") @db.Uuid
+  employeeName          String   @map("employee_name")
+  nip                   String
+  departmentName        String   @map("department_name")
+  positionName          String   @map("position_name")
+  bankName              String   @map("bank_name")
+  bankAccountLast4      String   @map("bank_account_last4") @db.Char(4)
+  baseSalary            Decimal  @map("base_salary") @db.Decimal(15, 2)
+  fixedAllowance        Decimal  @map("fixed_allowance") @db.Decimal(15, 2)
+  /// Diisi HR, dipertahankan saat payroll dijalankan ulang.
+  bonus                 Decimal  @default(0) @db.Decimal(15, 2)
+  gross                 Decimal  @db.Decimal(15, 2)
+  bpjsKes               Decimal  @map("bpjs_kes") @db.Decimal(15, 2)
+  bpjsJht               Decimal  @map("bpjs_jht") @db.Decimal(15, 2)
+  bpjsJp                Decimal  @map("bpjs_jp") @db.Decimal(15, 2)
+  /// Diinput manual oleh HR (PRD 6.4), dipertahankan saat dijalankan ulang.
+  pph21                 Decimal  @default(0) @db.Decimal(15, 2)
+  otherDeductions       Decimal  @default(0) @map("other_deductions") @db.Decimal(15, 2)
+  net                   Decimal  @db.Decimal(15, 2)
+  /// Bagian perusahaan per program + total (rupiah sebagai teks).
+  employerContributions Json     @map("employer_contributions")
+  /// Tarif dan batas upah yang dipakai menghitung slip ini.
+  configSnapshot        Json     @map("config_snapshot")
+  note                  String?
+  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  period   PayrollPeriod @relation(fields: [periodId], references: [id], onDelete: Restrict)
+  employee Employee      @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  // Satu slip per karyawan per periode; kolom pertama melayani FK period_id.
+  @@unique([periodId, employeeId])
+  // Slip milik karyawan (/payslips/me).
+  @@index([employeeId])
+  @@map("payroll_items")
 }
 
 // ---------------------------------------------------------------------------

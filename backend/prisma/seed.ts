@@ -1,7 +1,8 @@
 /**
  * Seed data awal: master organisasi, libur 2026, akun demo, 30 karyawan
- * fiktif, dan saldo cuti tahun berjalan (WIB) karyawan aktif. Jenis cuti
- * (ANNUAL/SICK/SPECIAL) diisi migrasi `leave_requests`, bukan seed.
+ * fiktif, saldo cuti tahun berjalan (WIB) karyawan aktif, serta struktur
+ * gaji dan BPJS/asuransi contoh. Jenis cuti dan tarif BPJS diisi migrasi
+ * (`leave_requests`, `payroll`), bukan seed.
  * Jalankan dengan `npm run db:seed` (= `npx prisma db seed`).
  *
  * Idempotent: setiap baris memakai upsert dengan key alami (nama, tanggal,
@@ -34,6 +35,7 @@ import {
   officeEmail,
   POSITIONS,
   REGULAR_SHIFT,
+  SALARIES,
   type SeedEmployee,
 } from './seed-data.js';
 
@@ -203,6 +205,8 @@ async function main(): Promise<void> {
             },
           });
 
+          await seedCompensation(tx, seeded.id, employee, deletedAt === null);
+
           if (deletedAt === null) {
             await tx.leaveBalance.upsert({
               where: {
@@ -240,6 +244,7 @@ async function main(): Promise<void> {
       employees,
       active,
       balances,
+      salaries,
     ] = await Promise.all([
       prisma.department.count(),
       prisma.position.count(),
@@ -248,14 +253,92 @@ async function main(): Promise<void> {
       prisma.employee.count(),
       prisma.employee.count({ where: { deletedAt: null } }),
       prisma.leaveBalance.count(),
+      prisma.salaryStructure.count(),
     ]);
     console.info(
       `Seed selesai: ${departments} departemen, ${positions} jabatan, ` +
         `${holidays} hari libur, ${users} akun, ${employees} karyawan ` +
-        `(${active} aktif), ${balances} saldo cuti.`,
+        `(${active} aktif), ${balances} saldo cuti, ${salaries} struktur gaji.`,
     );
   } finally {
     await prisma.$disconnect();
+  }
+}
+
+type SeedTx = Parameters<Parameters<PrismaClient['$transaction']>[0]>[0];
+
+/**
+ * Struktur gaji (berlaku sejak tanggal masuk) dan BPJS/asuransi contoh.
+ * Hanya dibuat jika karyawan belum punya, jadi data yang diubah lewat
+ * aplikasi tidak tertimpa. Uang dibuat dari teks (Prisma.Decimal).
+ */
+async function seedCompensation(
+  tx: SeedTx,
+  employeeId: string,
+  employee: SeedEmployee,
+  active: boolean,
+): Promise<void> {
+  const salary = SALARIES[employee.nip];
+  if (!salary) {
+    throw new Error(`Gaji contoh untuk ${employee.nip} belum ada di SALARIES`);
+  }
+  const [baseSalary, fixedAllowance, bankName, bankAccountLast4, dependents] =
+    salary;
+  const base = new Prisma.Decimal(baseSalary);
+
+  if ((await tx.salaryStructure.count({ where: { employeeId } })) === 0) {
+    await tx.salaryStructure.create({
+      data: {
+        employeeId,
+        baseSalary: base,
+        fixedAllowance: new Prisma.Decimal(fixedAllowance),
+        bankName,
+        bankAccountLast4,
+        effectiveFrom: day(employee.joinDate),
+      },
+    });
+  }
+
+  if ((await tx.benefit.count({ where: { employeeId } })) === 0) {
+    // Nomor kartu fiktif dari NIP (13 digit BPJS Kes, 11 digit BPJS TK).
+    const digits = employee.nip.replace(/\D/g, '');
+    const status = active ? 'ACTIVE' : 'INACTIVE';
+    await tx.benefit.createMany({
+      data: [
+        {
+          employeeId,
+          provider: 'BPJS Kesehatan',
+          program: 'JKN',
+          cardNo: `0001${digits.slice(-9)}`,
+          class: base.greaterThanOrEqualTo(10_000_000) ? 'Kelas 1' : 'Kelas 2',
+          dependents,
+          status,
+        },
+        {
+          employeeId,
+          provider: 'BPJS Ketenagakerjaan',
+          program: 'JHT, JKK, JKM, JP',
+          cardNo: `23${digits.slice(-9)}`,
+          dependents: 0,
+          status,
+        },
+        ...(employee.status === 'PERMANENT'
+          ? [
+              {
+                employeeId,
+                provider: 'Asuransi Kesehatan Kumpulan',
+                program: 'Rawat inap & rawat jalan',
+                cardNo: `AKK-${digits.slice(-5)}`,
+                class: base.greaterThanOrEqualTo(15_000_000)
+                  ? 'Plan A'
+                  : 'Plan B',
+                dependents,
+                status,
+              },
+            ]
+          : []),
+      ],
+    });
   }
 }
 

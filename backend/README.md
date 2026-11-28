@@ -72,20 +72,20 @@ Konfigurasi environment tidak valid (2 masalah):
 
 ## Script
 
-| Perintah                               | Fungsi                                               |
-| -------------------------------------- | ---------------------------------------------------- |
-| `npm run start:dev`                    | Jalankan dengan hot reload                           |
-| `npm run build`                        | Compile ke `dist/`                                   |
-| `npm run lint`                         | ESLint + cek format Prettier                         |
-| `npm run lint:fix`                     | Perbaiki lint dan format                             |
-| `npm test`                             | Unit test (`src/**/*.spec.ts`)                       |
-| `npm run test:e2e`                     | Test e2e (`test/`), dependensi di-mock, tanpa Docker |
-| `npm run test:int`                     | Integration test dengan PostgreSQL asli (lihat Cuti) |
-| `npm run test:cov`                     | Unit test + coverage                                 |
-| `npx prisma migrate dev --name <nama>` | Buat dan terapkan migrasi baru                       |
-| `npm run db:seed`                      | Isi data demo (idempoten, aman dijalankan ulang)     |
-| `npm run erd`                          | Gambar ulang ERD ke `../docs/erd.svg`                |
-| `npm run prisma:studio`                | Lihat isi database                                   |
+| Perintah                               | Fungsi                                                  |
+| -------------------------------------- | ------------------------------------------------------- |
+| `npm run start:dev`                    | Jalankan dengan hot reload                              |
+| `npm run build`                        | Compile ke `dist/`                                      |
+| `npm run lint`                         | ESLint + cek format Prettier                            |
+| `npm run lint:fix`                     | Perbaiki lint dan format                                |
+| `npm test`                             | Unit test (`src/**/*.spec.ts`)                          |
+| `npm run test:e2e`                     | Test e2e (`test/`), dependensi di-mock, tanpa Docker    |
+| `npm run test:int`                     | Integration test dengan PostgreSQL asli (cuti, payroll) |
+| `npm run test:cov`                     | Unit test + coverage                                    |
+| `npx prisma migrate dev --name <nama>` | Buat dan terapkan migrasi baru                          |
+| `npm run db:seed`                      | Isi data demo (idempoten, aman dijalankan ulang)        |
+| `npm run erd`                          | Gambar ulang ERD ke `../docs/erd.svg`                   |
+| `npm run prisma:studio`                | Lihat isi database                                      |
 
 ## Struktur
 
@@ -163,7 +163,7 @@ Catatan desain:
 
 ### Data demo (`npm run db:seed`)
 
-6 departemen, 18 jabatan, kantor "Head Office Jakarta" (radius 100 m), shift Reguler 08:30–17:30 (toleransi 15 menit), 17 libur nasional 2026 (tanggal hari raya berbasis kalender lunar masih perkiraan), `hr_contact`, dan 30 karyawan fiktif (1 sudah nonaktif sebagai contoh soft delete).
+6 departemen, 18 jabatan, kantor "Head Office Jakarta" (radius 100 m), shift Reguler 08:30–17:30 (toleransi 15 menit), 17 libur nasional 2026 (tanggal hari raya berbasis kalender lunar masih perkiraan), `hr_contact`, dan 30 karyawan fiktif (1 sudah nonaktif sebagai contoh soft delete), masing-masing dengan struktur gaji (berlaku sejak tanggal masuk), BPJS, dan asuransi contoh (angka sama dengan `supabase/seed-demo.sql`). Jenis cuti dan tarif BPJS diisi migrasi, bukan seed.
 
 | Email                    | Role     | Karyawan                            |
 | ------------------------ | -------- | ----------------------------------- |
@@ -334,6 +334,33 @@ TEST_DATABASE_URL=postgresql://hris:hris@localhost:5433/hris_test npm run test:i
 ```
 
 `globalSetup` menolak database yang namanya tidak mengandung `test`, lalu menjalankan `prisma migrate deploy` ke database itu.
+
+## Payroll
+
+| Endpoint (`/api/v1/...`)                                         | Akses        | Fungsi                                                          |
+| ---------------------------------------------------------------- | ------------ | --------------------------------------------------------------- |
+| `POST/GET employees/:id/salary-structures`                       | HR           | Tambah struktur gaji (baris baru) / riwayat                     |
+| `GET/POST employees/:id/benefits`, `PATCH/DELETE .../:benefitId` | HR           | BPJS dan asuransi karyawan                                      |
+| `GET/PUT payroll-configs`                                        | HR           | Tarif BPJS berlaku + riwayat / tarif baru mulai `effectiveFrom` |
+| `POST/GET payroll-periods`, `GET payroll-periods/:id`            | HR           | Buat periode DRAFT, daftar, detail (slip + total)               |
+| `POST payroll-periods/:id/run`                                   | HR           | Hitung slip (idempoten, hanya DRAFT)                            |
+| `PATCH payroll-items/:id`                                        | HR           | Bonus, PPh 21, potongan lain, catatan (hanya DRAFT)             |
+| `POST payroll-periods/:id/finalize` / `mark-paid` / `reopen`     | HR           | DRAFT -> FINAL -> PAID; FINAL -> DRAFT dengan `reason`          |
+| `GET payroll-periods/:id/employer-contributions`                 | HR           | Rekap iuran bagian perusahaan per program dan per karyawan      |
+| `GET payslips/me`, `GET payslips/me/:periodId`                   | EMPLOYEE, HR | Slip sendiri, hanya periode FINAL/PAID                          |
+| `GET benefits/me`                                                | EMPLOYEE, HR | BPJS dan asuransi sendiri                                       |
+
+**Uang** selalu `Prisma.Decimal` (kolom `Decimal(15,2)`, tarif `Decimal(7,4)` sebagai pecahan, `0.0100` = 1%). Di API uang dan tarif berupa teks (`"8500000.00"`); angka JSON ditolak 400 karena dibaca JavaScript sebagai float.
+
+**Perhitungan** (`payroll-calculator.ts`, fungsi murni, PRD 6.4): dasar upah = gaji pokok + tunjangan tetap, dibatasi `wageCap` per program (BPJS Kes Rp12.000.000, JP Rp10.547.400); iuran = dasar upah x tarif, dibulatkan ke rupiah `ROUND_HALF_UP`; bruto = gaji pokok + tunjangan + bonus; take home pay = bruto - BPJS Kes - JHT - JP - PPh 21 - potongan lain. JKK dan JKM hanya bagian perusahaan. Unit test memastikan file kalkulator tidak memakai `toNumber`/`Number()`/`parseFloat`. PPh 21 diinput manual oleh HR.
+
+**Tarif** tidak pernah ditimpa: `PUT /payroll-configs` menambah baris per program dengan `effectiveFrom` (tanggal 1); program + tanggal yang sudah ada = 409. Periode memakai tarif terbaru yang berlaku di awal bulan, dan struktur gaji terbaru yang berlaku di akhir bulan. Tarif awal ada di migrasi `payroll`.
+
+**Run idempoten**: satu transaksi dengan `pg_advisory_xact_lock(hashtextextended('payroll-period:<id>'))`, upsert per `(periodId, employeeId)`, bonus/PPh 21/potongan lain/catatan isian HR dipertahankan, slip karyawan yang tidak lagi memenuhi syarat dihapus dari draft. Ubah slip, finalize, mark-paid, dan reopen memakai lock yang sama, lalu `updateMany` bersyarat status lama (count 0 = 409). Karyawan aktif tanpa struktur gaji dilaporkan di `skipped`. Gaji prorata (masuk/keluar tengah bulan) belum dihitung (PRD: bisa V2).
+
+**Snapshot**: `PayrollItem` menyimpan nama, NIP, departemen, jabatan, rekening, semua angka, `employerContributions`, dan `configSnapshot` (tarif yang dipakai). Slip karyawan dibaca dari snapshot ini; menaikkan gaji setelah finalize tidak mengubah slip lama. Koreksi lewat reopen (alasan di AuditLog) lalu run ulang. Periode PAID tidak bisa dibuka lagi. CHECK constraint menjaga `gross = pokok + tunjangan + bonus` dan `net = gross - potongan`.
+
+Semua perubahan gaji, manfaat, tarif, slip, dan status periode dicatat di AuditLog (before/after). Integration test payroll: run paralel di periode kosong (diulang 5 putaran) dan berurutan menghasilkan jumlah slip dan total yang sama, isian HR bertahan, snapshot setelah kenaikan gaji, serta karyawan tidak bisa membaca slip DRAFT atau milik orang lain.
 
 ## Image produksi
 
