@@ -24,6 +24,7 @@ import { AuditService } from '../audit/audit.service.js';
 import { generateOpaqueToken, hashPassword } from '../auth/auth.crypto.js';
 import { PasswordResetService } from '../auth/password-reset.service.js';
 import { RefreshTokenService } from '../auth/refresh-token.service.js';
+import { LeaveBalanceService } from '../leave/leave-balance.service.js';
 import type {
   CreateEmployeeDto,
   UpdateEmployeeDto,
@@ -117,6 +118,7 @@ export class EmployeesService {
     private readonly passwordReset: PasswordResetService,
     private readonly refreshTokens: RefreshTokenService,
     private readonly invitation: EmployeeInvitationService,
+    private readonly leaveBalances: LeaveBalanceService,
   ) {}
 
   async list(query: ListEmployeesQueryDto): Promise<EmployeeListResult> {
@@ -154,8 +156,8 @@ export class EmployeesService {
   }
 
   /**
-   * Buat User + Employee dalam satu transaksi, lalu kirim email undangan
-   * berisi link set password. Akun baru diberi password acak yang tidak
+   * Buat User + Employee (beserta saldo cuti tahun berjalan) dalam satu
+   * transaksi, lalu kirim email undangan berisi link set password. Akun baru diberi password acak yang tidak
    * diketahui siapa pun, jadi baru bisa login setelah link undangan dipakai.
    */
   async create(dto: CreateEmployeeDto): Promise<CreateEmployeeResponseDto> {
@@ -187,6 +189,7 @@ export class EmployeesService {
         },
         select: EMPLOYEE_SELECT,
       });
+      await this.leaveBalances.ensureForEmployee(created.id, tx);
       const inviteToken = await this.passwordReset.issueToken(
         user.id,
         INVITATION_TTL_MS,

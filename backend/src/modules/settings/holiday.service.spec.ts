@@ -90,6 +90,30 @@ describe('HolidayService.workingDaysBetween', () => {
   });
 });
 
+describe('HolidayService.workingDatesBetween', () => {
+  it('daftar hari kerja tanpa akhir pekan dan libur dari database', async () => {
+    const { client, holidays } = setup();
+    client.holiday.findMany.mockResolvedValue([{ date: day('2026-08-17') }]);
+
+    // Jumat 14 Agustus sampai Selasa 18 Agustus 2026, Senin 17 libur.
+    await expect(
+      holidays.workingDatesBetween('2026-08-14', '2026-08-18'),
+    ).resolves.toEqual(['2026-08-14', '2026-08-18']);
+    expect(firstArgs(client.holiday.findMany).where).toEqual({
+      date: { gte: day('2026-08-14'), lte: day('2026-08-18') },
+    });
+  });
+
+  it('start setelah end: kosong tanpa query', async () => {
+    const { client, holidays } = setup();
+
+    await expect(
+      holidays.workingDatesBetween('2026-11-30', '2026-11-01'),
+    ).resolves.toEqual([]);
+    expect(client.holiday.findMany).not.toHaveBeenCalled();
+  });
+});
+
 describe('HolidayService.isWorkingDay', () => {
   it('Sabtu bukan hari kerja, tanpa query', async () => {
     const { holidays, client } = setup();

@@ -3,9 +3,43 @@ import {
   assertUploadAllowed,
   AVATAR_UPLOAD_POLICY,
   detectImageType,
+  LEAVE_ATTACHMENT_UPLOAD_POLICY,
 } from './upload-policy.js';
 
 const MB = 1024 * 1024;
+
+describe('assertUploadAllowed (lampiran cuti: JPG/PNG/PDF maks 2 MB)', () => {
+  it.each(['image/jpeg', 'image/png', 'application/pdf'])(
+    'menerima %s',
+    (contentType) => {
+      expect(() =>
+        assertUploadAllowed(LEAVE_ATTACHMENT_UPLOAD_POLICY, {
+          contentType,
+          size: 2 * MB,
+        }),
+      ).not.toThrow();
+    },
+  );
+
+  it('menolak tipe lain dan file lebih dari 2 MB', () => {
+    expect(() =>
+      assertUploadAllowed(LEAVE_ATTACHMENT_UPLOAD_POLICY, {
+        contentType: 'application/msword',
+        size: 1000,
+      }),
+    ).toThrow(
+      new BadRequestException(
+        'Tipe file harus JPG/PNG/PDF (image/jpeg, image/png, application/pdf)',
+      ),
+    );
+    expect(() =>
+      assertUploadAllowed(LEAVE_ATTACHMENT_UPLOAD_POLICY, {
+        contentType: 'application/pdf',
+        size: 2 * MB + 1,
+      }),
+    ).toThrow(new BadRequestException('Ukuran file maksimal 2 MB'));
+  });
+});
 
 describe('assertUploadAllowed (avatar: JPG/PNG maks 2 MB)', () => {
   it.each([

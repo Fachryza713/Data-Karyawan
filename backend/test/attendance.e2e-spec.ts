@@ -35,6 +35,8 @@ describe('Attendance (e2e)', () => {
       $disconnect: jest.fn(),
       employee: { findUnique: findUniqueEmployee },
       holiday: { findUnique: jest.fn(() => Promise.resolve(null)) },
+      // ApprovedRemoteWorkPolicy: tidak ada izin WFH/dinas yang disetujui.
+      leaveRequest: { findFirst: jest.fn(() => Promise.resolve(null)) },
       attendance: {
         findUnique: findUniqueAttendance,
         create: createAttendance,

@@ -1,6 +1,8 @@
 /**
- * Seed data awal: master organisasi, libur 2026, akun demo, dan 30 karyawan
- * fiktif. Jalankan dengan `npm run db:seed` (= `npx prisma db seed`).
+ * Seed data awal: master organisasi, libur 2026, akun demo, 30 karyawan
+ * fiktif, dan saldo cuti tahun berjalan (WIB) karyawan aktif. Jenis cuti
+ * (ANNUAL/SICK/SPECIAL) diisi migrasi `leave_requests`, bukan seed.
+ * Jalankan dengan `npm run db:seed` (= `npx prisma db seed`).
  *
  * Idempotent: setiap baris memakai upsert dengan key alami (nama, tanggal,
  * email, NIP) dan `update: {}`, jadi menjalankan ulang tidak menggandakan
@@ -15,6 +17,7 @@ import 'dotenv/config';
 import { randomBytes } from 'node:crypto';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { argon2id, hash } from 'argon2';
+import { toWibDateOnly } from '../src/common/validation/date-only.js';
 import {
   isValidNip,
   isValidShiftWindow,
@@ -144,6 +147,17 @@ async function main(): Promise<void> {
           });
         }
 
+        // Dari migrasi leave_requests; kuota saldo cuti tahunan.
+        const annualLeave = await tx.leaveType.findUnique({
+          where: { code: 'ANNUAL' },
+        });
+        if (!annualLeave?.annualQuota) {
+          throw new Error(
+            'Jenis cuti ANNUAL belum ada. Jalankan `npx prisma migrate dev` dulu.',
+          );
+        }
+        const leaveYear = Number(toWibDateOnly(new Date()).slice(0, 4));
+
         for (const employee of EMPLOYEES) {
           const positionId = positionIds.get(
             `${employee.department}/${employee.position}`,
@@ -169,7 +183,7 @@ async function main(): Promise<void> {
             },
           });
 
-          await tx.employee.upsert({
+          const seeded = await tx.employee.upsert({
             where: { nip: employee.nip },
             update: {},
             create: {
@@ -188,6 +202,20 @@ async function main(): Promise<void> {
               deletedAt,
             },
           });
+
+          if (deletedAt === null) {
+            await tx.leaveBalance.upsert({
+              where: {
+                employeeId_year: { employeeId: seeded.id, year: leaveYear },
+              },
+              update: {},
+              create: {
+                employeeId: seeded.id,
+                year: leaveYear,
+                quota: annualLeave.annualQuota,
+              },
+            });
+          }
         }
 
         await tx.companySetting.upsert({
@@ -204,19 +232,27 @@ async function main(): Promise<void> {
       { timeout: 60_000 },
     );
 
-    const [departments, positions, holidays, users, employees, active] =
-      await Promise.all([
-        prisma.department.count(),
-        prisma.position.count(),
-        prisma.holiday.count(),
-        prisma.user.count(),
-        prisma.employee.count(),
-        prisma.employee.count({ where: { deletedAt: null } }),
-      ]);
+    const [
+      departments,
+      positions,
+      holidays,
+      users,
+      employees,
+      active,
+      balances,
+    ] = await Promise.all([
+      prisma.department.count(),
+      prisma.position.count(),
+      prisma.holiday.count(),
+      prisma.user.count(),
+      prisma.employee.count(),
+      prisma.employee.count({ where: { deletedAt: null } }),
+      prisma.leaveBalance.count(),
+    ]);
     console.info(
       `Seed selesai: ${departments} departemen, ${positions} jabatan, ` +
         `${holidays} hari libur, ${users} akun, ${employees} karyawan ` +
-        `(${active} aktif).`,
+        `(${active} aktif), ${balances} saldo cuti.`,
     );
   } finally {
     await prisma.$disconnect();

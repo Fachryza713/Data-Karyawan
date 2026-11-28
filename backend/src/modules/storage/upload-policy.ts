@@ -17,6 +17,13 @@ export const AVATAR_UPLOAD_POLICY: UploadPolicy = {
   typeLabel: 'JPG/PNG',
 };
 
+/** Lampiran pengajuan cuti (surat dokter, dll): JPG/PNG/PDF maksimal 2 MB (PRD US-08). */
+export const LEAVE_ATTACHMENT_UPLOAD_POLICY: UploadPolicy = {
+  allowedContentTypes: ['image/jpeg', 'image/png', 'application/pdf'],
+  maxBytes: 2 * MB,
+  typeLabel: 'JPG/PNG/PDF',
+};
+
 export type DeclaredFile = {
   contentType: string;
   /** Ukuran file dalam byte, dikirim klien sebelum upload. */

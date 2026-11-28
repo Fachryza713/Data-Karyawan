@@ -48,3 +48,47 @@ jobs:
 
       - name: Unit test
         run: npm test -- --ci
+
+  integration:
+    name: Integration test (PostgreSQL)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+
+    # Database khusus test, sama dengan service postgres-test di docker-compose.yml.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: hris
+          POSTGRES_PASSWORD: hris
+          POSTGRES_DB: hris_test
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U hris -d hris_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      TEST_DATABASE_URL: postgresql://hris:hris@localhost:5433/hris_test
+      TZ: Asia/Jakarta
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      # globalSetup menjalankan `prisma migrate deploy` ke TEST_DATABASE_URL.
+      - name: Integration test
+        run: npm run test:int -- --ci

@@ -80,6 +80,7 @@ Konfigurasi environment tidak valid (2 masalah):
 | `npm run lint:fix`                     | Perbaiki lint dan format                             |
 | `npm test`                             | Unit test (`src/**/*.spec.ts`)                       |
 | `npm run test:e2e`                     | Test e2e (`test/`), dependensi di-mock, tanpa Docker |
+| `npm run test:int`                     | Integration test dengan PostgreSQL asli (lihat Cuti) |
 | `npm run test:cov`                     | Unit test + coverage                                 |
 | `npx prisma migrate dev --name <nama>` | Buat dan terapkan migrasi baru                       |
 | `npm run db:seed`                      | Isi data demo (idempoten, aman dijalankan ulang)     |
@@ -288,7 +289,7 @@ Hanya akun role `EMPLOYEE` yang absen dan muncul di log, sama dengan versi Supab
 4. Masuk paling lambat jam masuk shift + toleransi = `ON_TIME`, selain itu `LATE` dengan `lateMinutes` dihitung dari jam masuk (minimal 1). Pulang sebelum jam pulang shift = `EARLY_LEAVE` (`lateMinutes` tetap tersimpan).
 5. Absen ganda: unique `(employeeId, date)` di database. Dua request bersamaan menghasilkan satu baris; yang kalah mendapat 409 "Anda sudah absen masuk hari ini" (P2002 ditangkap). Pulang ganda dicegah `update ... where clockOutAt IS NULL`. Pulang tanpa absen masuk: 422.
 
-`RemoteWorkPolicy` untuk sementara selalu `null` (`NoRemoteWorkPolicy`). Modul pengajuan WFH/dinas cukup mengganti provider `REMOTE_WORK_POLICY` di `AttendanceModule`.
+`RemoteWorkPolicy` diisi `ApprovedRemoteWorkPolicy` dari modul cuti (provider `REMOTE_WORK_POLICY` di `AttendanceModule`): ada pengajuan WFH/BUSINESS_TRIP `APPROVED` yang mencakup tanggal itu = mode `WFH`/`BUSINESS_TRIP`. Pengajuan yang masih `PENDING` tidak membuka absen di luar radius.
 
 **Log HR satu tanggal** menampilkan semua karyawan yang sudah mulai bekerja (`joinDate`), termasuk yang belum absen dengan status `NOT_YET`; karyawan yang sudah keluar hanya muncul di tanggal yang punya catatan. **Rentang** hanya menampilkan baris yang ada.
 
@@ -299,6 +300,40 @@ Hanya akun role `EMPLOYEE` yang absen dan muncul di log, sama dengan versi Supab
 Fake GPS tidak bisa dicegah sepenuhnya dari aplikasi web. Browser hanya meneruskan koordinat dari sistem operasi, dan aplikasi pemalsu lokasi (atau DevTools > Sensors) bisa mengisi nilai apa pun, termasuk akurasi yang tampak bagus. Server tidak punya cara memverifikasi bahwa koordinat itu asli.
 
 Mitigasinya adalah jejak audit untuk HR: setiap absen menyimpan koordinat mentah, akurasi GPS, jarak yang dihitung server, dan waktu server untuk masuk dan pulang. HR bisa melihatnya di log dan ekspor CSV untuk menemukan pola janggal, misalnya koordinat identik setiap hari atau akurasi selalu bulat. Jarak dan waktu tidak pernah diterima dari client, jadi yang bisa dipalsukan hanya posisi, bukan perhitungannya.
+
+## Cuti, WFH, dan dinas luar
+
+| Endpoint (`/api/v1/...`)                        | Akses        | Fungsi                                                                         |
+| ----------------------------------------------- | ------------ | ------------------------------------------------------------------------------ |
+| `GET leave-types`                               | EMPLOYEE, HR | Jenis cuti (sumber `leaveTypeId`)                                              |
+| `POST leave-requests/me`                        | EMPLOYEE, HR | Ajukan `kind` LEAVE / WFH / BUSINESS_TRIP                                      |
+| `POST leave-requests/me/attachments/upload-url` | EMPLOYEE, HR | Presigned POST lampiran JPG/PNG/PDF maks 2 MB, key `leave/<employeeId>/<uuid>` |
+| `GET leave-requests/me`                         | EMPLOYEE, HR | Riwayat pengajuan sendiri                                                      |
+| `POST leave-requests/me/:id/cancel`             | EMPLOYEE, HR | Batalkan milik sendiri yang masih `PENDING`                                    |
+| `GET leave-balances/me?year=`                   | EMPLOYEE, HR | Saldo cuti tahunan: quota, used, remaining, pendingDays                        |
+| `GET leave-requests`                            | HR           | Daftar: `status`, `kind`, `departmentId`, `from`-`to`, pagination              |
+| `GET leave-requests/:id`                        | HR           | Detail + presigned URL lampiran (5 menit) + saldo                              |
+| `POST leave-requests/:id/approve`               | HR           | Setujui, body `{ note? }`                                                      |
+| `POST leave-requests/:id/reject`                | HR           | Tolak, body `{ note }` wajib                                                   |
+
+Jenis cuti (`ANNUAL` 12 hari kerja dan mengurangi kuota, `SICK` lampiran wajib jika > 1 hari kerja, `SPECIAL`) diisi migrasi `leave_requests`, karena dibutuhkan juga di production (seed tidak jalan di production).
+
+**Aturan pengajuan** (PRD 6.2, 6.3, `leave-rules.ts`): `startDate <= endDate`; hari kerja dihitung server (`HolidayService`); tidak boleh tumpang tindih dengan pengajuan `PENDING`/`APPROVED` milik sendiri (409, dan `EXCLUDE USING gist` di database untuk race dua submit); cuti tahunan tidak melebihi `quota - used` dan tidak lintas tahun; sakit > 1 hari kerja wajib lampiran yang key-nya milik karyawan itu dan object-nya ada (`HeadObject`); WFH/dinas paling lambat H-1; `destination` wajib untuk dinas. Pengajuan `PENDING` tidak memesan kuota; batasnya dijaga saat approve.
+
+**Status**: `PENDING` bisa menjadi `APPROVED`, `REJECTED`, atau `CANCELLED`; ketiganya final. Setiap perubahan memakai `updateMany({ where: { id, status: 'PENDING' } })`, `count` 0 = 409. HR tidak bisa memproses pengajuannya sendiri (403).
+
+**Approve** dalam satu `$transaction`: status kondisional; untuk cuti tahunan satu `UPDATE leave_balances SET used = used + n WHERE ... AND used + n <= quota` (0 baris = rollback 409 "Saldo cuti tidak cukup", tanpa baca-cek-tulis; CHECK `used <= quota` pengaman terakhir); untuk kind LEAVE baris presensi `LEAVE`/`SICK`/`PERMIT` per hari kerja (hari yang sudah absen masuk dibiarkan); AuditLog.
+
+**Saldo** dibuat saat karyawan baru ditambahkan (di transaksi yang sama) dan oleh `LeaveBalanceJob` setiap 1 Januari 00:05 WIB (`createMany({ skipDuplicates: true })`, idempotent). Saldo juga dipastikan ada saat approve.
+
+**Integration test** (`test/integration/`, PostgreSQL asli): dua approve paralel yang totalnya melebihi kuota (hanya satu berhasil, saldo tidak minus), approve ganda paralel, EXCLUDE dan CHECK constraint, serta absen di luar radius dengan WFH `APPROVED` vs `PENDING`.
+
+```bash
+docker compose up -d postgres-test   # dari root repo; port 5433, data di tmpfs
+TEST_DATABASE_URL=postgresql://hris:hris@localhost:5433/hris_test npm run test:int
+```
+
+`globalSetup` menolak database yang namanya tidak mengandung `test`, lalu menjalankan `prisma migrate deploy` ke database itu.
 
 ## Image produksi
 

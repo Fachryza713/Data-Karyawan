@@ -9,6 +9,7 @@ import { AuditModule } from './modules/audit/audit.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
 import { EmployeesModule } from './modules/employees/employees.module.js';
 import { HealthModule } from './modules/health/health.module.js';
+import { LeaveModule } from './modules/leave/leave.module.js';
 import { MailModule } from './modules/mail/mail.module.js';
 import { OrganizationModule } from './modules/organization/organization.module.js';
 import { SettingsModule } from './modules/settings/settings.module.js';
@@ -28,7 +29,7 @@ import { RedisModule } from './redis/redis.module.js';
       useFactory: (config: ConfigService<Env, true>) =>
         buildLoggerParams(config),
     }),
-    // Job terjadwal (penandaan alpa 23:59 WIB).
+    // Job terjadwal (penandaan alpa 23:59 WIB, saldo cuti 1 Januari 00:05 WIB).
     ScheduleModule.forRoot(),
     PrismaModule,
     RedisModule,
@@ -39,6 +40,7 @@ import { RedisModule } from './redis/redis.module.js';
     EmployeesModule,
     OrganizationModule,
     SettingsModule,
+    LeaveModule,
     AttendanceModule,
     HealthModule,
   ],

@@ -20,6 +20,7 @@ import {
   countWorkingDays,
   type DateInput,
   isWeekend,
+  listWorkingDays,
   toCalendarDate,
 } from './working-days.js';
 
@@ -47,7 +48,7 @@ function toDto(row: HolidayRow): HolidayResponseDto {
 
 /**
  * Hari libur nasional dan kalender hari kerja. isWorkingDay dan
- * workingDaysBetween dipakai modul absensi, cuti, dan payroll.
+ * workingDaysBetween/workingDatesBetween dipakai modul absensi, cuti, dan payroll.
  */
 @Injectable()
 export class HolidayService {
@@ -153,14 +154,30 @@ export class HolidayService {
     if (from > to) {
       return 0;
     }
+    return countWorkingDays(from, to, await this.holidayDates(from, to));
+  }
+
+  /**
+   * Tanggal hari kerja ("YYYY-MM-DD") dari start sampai end, inklusif, urut
+   * naik. Jumlahnya sama dengan workingDaysBetween.
+   */
+  async workingDatesBetween(
+    start: DateInput,
+    end: DateInput,
+  ): Promise<string[]> {
+    const from = toCalendarDate(start);
+    const to = toCalendarDate(end);
+    if (from > to) {
+      return [];
+    }
+    return listWorkingDays(from, to, await this.holidayDates(from, to));
+  }
+
+  private async holidayDates(from: string, to: string): Promise<string[]> {
     const holidays = await this.prisma.client.holiday.findMany({
       where: { date: { gte: parseDateOnly(from), lte: parseDateOnly(to) } },
       select: { date: true },
     });
-    return countWorkingDays(
-      from,
-      to,
-      holidays.map((holiday) => toDateOnly(holiday.date)),
-    );
+    return holidays.map((holiday) => toDateOnly(holiday.date));
   }
 }

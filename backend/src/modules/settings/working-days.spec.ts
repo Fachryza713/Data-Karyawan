@@ -2,7 +2,12 @@ import {
   parseDateOnly,
   toDateOnly,
 } from '../../common/validation/date-only.js';
-import { countWorkingDays, isWeekend, toCalendarDate } from './working-days.js';
+import {
+  countWorkingDays,
+  isWeekend,
+  listWorkingDays,
+  toCalendarDate,
+} from './working-days.js';
 
 // Kalender acuan November 2026: tanggal 1 hari Minggu, 26 hari Kamis.
 
@@ -144,6 +149,39 @@ describe('countWorkingDays', () => {
           end,
           countDayByDay(start, end, holidays),
         ]);
+      }
+    }
+  });
+});
+
+describe('listWorkingDays', () => {
+  it('Senin-Jumat tanpa libur, urut naik', () => {
+    // Jumat 27 Nov sampai Rabu 2 Des 2026, libur fiktif Selasa 1 Des.
+    expect(listWorkingDays('2026-11-27', '2026-12-02', ['2026-12-01'])).toEqual(
+      ['2026-11-27', '2026-11-30', '2026-12-02'],
+    );
+  });
+
+  it('libur akhir pekan diabaikan; start setelah end = kosong', () => {
+    expect(listWorkingDays('2026-11-28', '2026-11-29', ['2026-11-28'])).toEqual(
+      [],
+    );
+    expect(listWorkingDays('2026-11-30', '2026-11-01', [])).toEqual([]);
+  });
+
+  it('jumlahnya selalu sama dengan countWorkingDays', () => {
+    const holidays = ['2026-12-25', '2026-12-31', '2027-01-01'];
+    for (let offset = 0; offset < 14; offset++) {
+      const start = toDateOnly(
+        new Date(parseDateOnly('2026-12-20').getTime() + offset * 86_400_000),
+      );
+      for (const length of [0, 1, 4, 9, 30]) {
+        const end = toDateOnly(
+          new Date(parseDateOnly(start).getTime() + length * 86_400_000),
+        );
+        expect(listWorkingDays(start, end, holidays)).toHaveLength(
+          countWorkingDays(start, end, holidays),
+        );
       }
     }
   });
