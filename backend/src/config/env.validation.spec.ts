@@ -118,4 +118,49 @@ describe('validateEnv', () => {
       'JWT_REFRESH_SECRET: harus berbeda dari JWT_ACCESS_SECRET',
     );
   });
+
+  it('dashboard antrean mati secara default', () => {
+    expect(validateEnv(validEnv()).ENABLE_QUEUE_DASHBOARD).toBe(false);
+    expect(
+      validateEnv({ ...validEnv(), ENABLE_QUEUE_DASHBOARD: 'false' })
+        .ENABLE_QUEUE_DASHBOARD,
+    ).toBe(false);
+  });
+
+  it('ENABLE_QUEUE_DASHBOARD=true mewajibkan user dan password (minimal 12 karakter)', () => {
+    const error = captureError({
+      ...validEnv(),
+      ENABLE_QUEUE_DASHBOARD: 'true',
+    });
+    expect(error.message).toContain(
+      'QUEUE_DASHBOARD_USER: wajib diisi jika ENABLE_QUEUE_DASHBOARD=true',
+    );
+    expect(error.message).toContain(
+      'QUEUE_DASHBOARD_PASSWORD: wajib diisi jika ENABLE_QUEUE_DASHBOARD=true',
+    );
+
+    expect(
+      captureError({
+        ...validEnv(),
+        ENABLE_QUEUE_DASHBOARD: 'true',
+        QUEUE_DASHBOARD_USER: 'admin',
+        QUEUE_DASHBOARD_PASSWORD: 'pendek',
+      }).message,
+    ).toContain('QUEUE_DASHBOARD_PASSWORD: minimal 12 karakter');
+
+    const env = validateEnv({
+      ...validEnv(),
+      ENABLE_QUEUE_DASHBOARD: 'true',
+      QUEUE_DASHBOARD_USER: 'admin',
+      QUEUE_DASHBOARD_PASSWORD: 'rahasia-panjang-sekali',
+    });
+    expect(env.ENABLE_QUEUE_DASHBOARD).toBe(true);
+  });
+
+  it('ENABLE_QUEUE_DASHBOARD bukan boolean ditolak', () => {
+    expect(
+      captureError({ ...validEnv(), ENABLE_QUEUE_DASHBOARD: 'mungkin' })
+        .message,
+    ).toContain('ENABLE_QUEUE_DASHBOARD: harus true atau false');
+  });
 });

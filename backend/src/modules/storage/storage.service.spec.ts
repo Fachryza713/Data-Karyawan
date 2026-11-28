@@ -1,3 +1,4 @@
+import { jest } from '@jest/globals';
 import type { ConfigService } from '@nestjs/config';
 import { StorageService } from './storage.service.js';
 
@@ -74,6 +75,43 @@ describe('StorageService', () => {
     expect(url.pathname).toBe('/hris-files/employees/e1/avatar-abc');
     expect(url.searchParams.get('X-Amz-Expires')).toBe('600');
     expect(url.searchParams.get('X-Amz-Signature')).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('createPresignedDownload dengan nama file: Content-Disposition inline ikut ditandatangani', async () => {
+    const url = new URL(
+      await createService().createPresignedDownload(
+        'payslips/2026-11/e1.pdf',
+        300,
+        'slip-gaji-2026-11-BRT-2024-0003.pdf',
+      ),
+    );
+
+    expect(url.searchParams.get('X-Amz-Expires')).toBe('300');
+    expect(url.searchParams.get('response-content-disposition')).toBe(
+      'inline; filename="slip-gaji-2026-11-BRT-2024-0003.pdf"',
+    );
+    await expect(
+      createService().createPresignedDownload('a.pdf', 300, 'a"; x=.pdf'),
+    ).rejects.toThrow('Nama file tidak valid');
+  });
+
+  it('putObject: PutObject ke bucket dengan Content-Type dan ukuran', async () => {
+    const service = createService();
+    const send = jest.fn(() => Promise.resolve({}));
+    (service as unknown as { client: { send: typeof send } }).client.send =
+      send;
+    const body = new Uint8Array([0x25, 0x50, 0x44, 0x46]);
+
+    await service.putObject('payslips/2026-11/e1.pdf', body, 'application/pdf');
+
+    const [command] = send.mock.calls[0] as unknown as [{ input: unknown }];
+    expect(command.input).toEqual({
+      Bucket: 'hris-files',
+      Key: 'payslips/2026-11/e1.pdf',
+      Body: body,
+      ContentType: 'application/pdf',
+      ContentLength: 4,
+    });
   });
 
   it('tanpa S3_PUBLIC_ENDPOINT, presigned URL memakai S3_ENDPOINT', async () => {

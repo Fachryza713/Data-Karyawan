@@ -1,6 +1,7 @@
 import { Prisma } from '../../generated/prisma/client.js';
 import {
   formatMoney,
+  formatRupiah,
   formatRate,
   isMoneyString,
   isRateString,
@@ -56,5 +57,21 @@ describe('money', () => {
       ),
     ).toBe('10000000000000.00');
     expect(formatMoney(sumMoney([]))).toBe('0.00');
+  });
+});
+
+describe('formatRupiah', () => {
+  it('titik ribuan, koma desimal, selalu 2 desimal; dari Decimal tanpa float', () => {
+    expect(formatRupiah(parseMoney('8500000'))).toBe('Rp 8.500.000,00');
+    expect(formatRupiah(parseMoney('105474.5'))).toBe('Rp 105.474,50');
+    expect(formatRupiah(parseMoney('0'))).toBe('Rp 0,00');
+    expect(formatRupiah(parseMoney('999'))).toBe('Rp 999,00');
+    expect(formatRupiah(parseMoney('9999999999999.99'))).toBe(
+      'Rp 9.999.999.999.999,99',
+    );
+    expect(formatRupiah(parseMoney('0.1').plus(parseMoney('0.2')))).toBe(
+      'Rp 0,30',
+    );
+    expect(formatRupiah(parseMoney('1500').negated())).toBe('-Rp 1.500,00');
   });
 });

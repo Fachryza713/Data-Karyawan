@@ -10,12 +10,18 @@ import { PayrollItemsService } from './payroll-items.service.js';
 import { PayrollPeriodsController } from './payroll-periods.controller.js';
 import { PayrollPeriodsService } from './payroll-periods.service.js';
 import { PayrollRunService } from './payroll-run.service.js';
+import { PayslipPdfController } from './payslip-pdf.controller.js';
+import { PayslipPdfQueue } from './payslip-pdf.queue.js';
+import { PayslipPdfService } from './payslip-pdf.service.js';
 import { PayslipsService } from './payslips.service.js';
 
 /**
  * Payroll bulanan (PRD 5.5, 6.4): struktur gaji dan manfaat karyawan, tarif
  * BPJS per tanggal berlaku, periode DRAFT/FINAL/PAID dengan slip snapshot,
  * serta slip dan manfaat untuk karyawan (/me).
+ *
+ * PDF slip: API hanya memasukkan job ke queue "payslip-pdf" (butuh
+ * QueueModule); PDF dibuat PayslipPdfProcessor di proses worker (WorkerModule).
  */
 @Module({
   controllers: [
@@ -24,6 +30,7 @@ import { PayslipsService } from './payslips.service.js';
     PayrollConfigsController,
     PayrollPeriodsController,
     PayrollItemsController,
+    PayslipPdfController,
   ],
   providers: [
     CompensationService,
@@ -32,6 +39,8 @@ import { PayslipsService } from './payslips.service.js';
     PayrollPeriodsService,
     PayrollItemsService,
     PayslipsService,
+    PayslipPdfService,
+    PayslipPdfQueue,
     Clock,
   ],
 })

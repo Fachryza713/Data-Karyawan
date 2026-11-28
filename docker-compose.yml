@@ -2,11 +2,13 @@
 #
 #   docker compose up -d --build     # jalankan semua service
 #   docker compose logs -f api       # lihat log API
+#   docker compose logs -f worker    # lihat log worker (PDF slip, email)
 #   docker compose down              # hentikan (data tetap di volume)
 #   docker compose down -v           # hentikan dan hapus semua data
 #
 # Port di host:
 #   API + Swagger  http://localhost:3000/docs
+#   Bull Board     http://localhost:3000/admin/queues (admin / dev-only-queue-dashboard)
 #   PostgreSQL     localhost:5432  (hris / hris, database hris)
 #   PostgreSQL test localhost:5433 (hris / hris, database hris_test, profile test)
 #   Redis          localhost:6379
@@ -20,6 +22,49 @@ name: hris-blue-rose
 x-minio-credentials: &minio-credentials
   MINIO_ROOT_USER: minioadmin
   MINIO_ROOT_PASSWORD: minioadmin
+
+x-backend-env: &backend-env
+  NODE_ENV: development
+  LOG_LEVEL: debug
+  DATABASE_URL: postgresql://hris:hris@postgres:5432/hris?schema=public
+  REDIS_URL: redis://redis:6379
+  JWT_ACCESS_SECRET: dev-only-access-secret-ganti-di-produksi-0001
+  JWT_REFRESH_SECRET: dev-only-refresh-secret-ganti-di-produksi-0002
+  S3_ENDPOINT: http://minio:9000
+  # Presigned URL dibuka browser di host, bukan dari dalam jaringan Docker.
+  S3_PUBLIC_ENDPOINT: http://localhost:9000
+  S3_BUCKET: hris-files
+  S3_ACCESS_KEY: minioadmin
+  S3_SECRET_KEY: minioadmin
+  SMTP_HOST: mailpit
+  SMTP_PORT: 1025
+  MAIL_FROM: HRIS Blue Rose Tech <no-reply@bluerose.test>
+  FRONTEND_URL: http://localhost:5173
+  TZ: Asia/Jakarta
+  # Event file dari bind mount Windows/macOS tidak sampai ke container;
+  # watcher TypeScript memakai polling supaya hot reload tetap jalan.
+  TSC_WATCHFILE: DynamicPriorityPolling
+  TSC_WATCHDIRECTORY: RecursiveDirectoryUsingDynamicPriorityPolling
+
+# Image backend bersama untuk api dan worker (satu build, tag sama).
+x-backend: &backend
+  build:
+    context: ./backend
+    target: dev
+  image: hris-blue-rose-backend:dev
+  volumes:
+    - ./backend:/app
+    # node_modules milik image (Linux), bukan milik host.
+    - /app/node_modules
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+    minio-init:
+      condition: service_completed_successfully
+    mailpit:
+      condition: service_started
 
 services:
   postgres:
@@ -117,53 +162,37 @@ services:
       - '8025:8025'
 
   api:
-    build:
-      context: ./backend
-      target: dev
+    <<: *backend
     environment:
-      NODE_ENV: development
+      <<: *backend-env
       PORT: 3000
-      LOG_LEVEL: debug
-      DATABASE_URL: postgresql://hris:hris@postgres:5432/hris?schema=public
-      REDIS_URL: redis://redis:6379
-      JWT_ACCESS_SECRET: dev-only-access-secret-ganti-di-produksi-0001
-      JWT_REFRESH_SECRET: dev-only-refresh-secret-ganti-di-produksi-0002
-      S3_ENDPOINT: http://minio:9000
-      # Presigned URL dibuka browser di host, bukan dari dalam jaringan Docker.
-      S3_PUBLIC_ENDPOINT: http://localhost:9000
-      S3_BUCKET: hris-files
-      S3_ACCESS_KEY: minioadmin
-      S3_SECRET_KEY: minioadmin
-      SMTP_HOST: mailpit
-      SMTP_PORT: 1025
-      MAIL_FROM: HRIS Blue Rose Tech <no-reply@bluerose.test>
-      FRONTEND_URL: http://localhost:5173
-      TZ: Asia/Jakarta
-      # Event file dari bind mount Windows/macOS tidak sampai ke container;
-      # watcher TypeScript memakai polling supaya hot reload tetap jalan.
-      TSC_WATCHFILE: DynamicPriorityPolling
-      TSC_WATCHDIRECTORY: RecursiveDirectoryUsingDynamicPriorityPolling
+      # Bull Board http://localhost:3000/admin/queues (basic auth di bawah).
+      ENABLE_QUEUE_DASHBOARD: 'true'
+      QUEUE_DASHBOARD_USER: admin
+      QUEUE_DASHBOARD_PASSWORD: dev-only-queue-dashboard
     ports:
       - '3000:3000'
-    volumes:
-      - ./backend:/app
-      # node_modules milik image (Linux), bukan milik host.
-      - /app/node_modules
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      minio-init:
-        condition: service_completed_successfully
-      mailpit:
-        condition: service_started
     healthcheck:
       test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:3000/health']
       interval: 10s
       timeout: 5s
       start_period: 60s
       retries: 5
+
+  # Proses worker BullMQ (src/worker.ts): membuat PDF slip (queue payslip-pdf)
+  # dan mengirim email (queue mail). Image dan env sama dengan api, tanpa
+  # port HTTP. Menunggu api sehat karena api yang menjalankan prisma generate
+  # di bind mount; hasil build worker di dist-worker/ supaya tidak bentrok
+  # dengan watcher api di dist/.
+  worker:
+    <<: *backend
+    command: ['npm', 'run', 'start:worker:dev']
+    environment:
+      <<: *backend-env
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
 
 volumes:
   postgres-data:

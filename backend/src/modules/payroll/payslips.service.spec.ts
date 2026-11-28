@@ -1,7 +1,13 @@
-import { NotFoundException } from '@nestjs/common';
-import { type QueryArgs, queryMock } from '../../../test/fixtures/employees.js';
+import { ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  type QueryArgs,
+  queryMock,
+  storageMock,
+} from '../../../test/fixtures/employees.js';
 import { Prisma } from '../../generated/prisma/client.js';
 import type { PrismaService } from '../../prisma/prisma.service.js';
+import type { StorageService } from '../storage/storage.service.js';
+import { PayrollMessages } from './payroll.constants.js';
 import { PayslipsService } from './payslips.service.js';
 
 const d = (value: string) => new Prisma.Decimal(value);
@@ -55,8 +61,13 @@ function setup() {
       findFirst: queryMock().mockResolvedValue(item),
     },
   };
-  const service = new PayslipsService({ client } as unknown as PrismaService);
-  return { service, client };
+  const storage = storageMock();
+  const service = new PayslipsService(
+    { client } as unknown as PrismaService,
+    storage as unknown as StorageService,
+    { now: () => NOW },
+  );
+  return { service, client, storage };
 }
 
 const firstArgs = (mock: { mock: { calls: QueryArgs[][] } }) =>
@@ -125,5 +136,69 @@ describe('PayslipsService', () => {
     client.employee.findUnique.mockResolvedValue(null);
 
     await expect(service.listMine(USER)).rejects.toThrow(NotFoundException);
+  });
+});
+
+describe('PayslipsService.myPdf', () => {
+  const KEY = `payslips/2026-11/${EMPLOYEE}.pdf`;
+  const pdfRow = (slipStatus: string, slipKey: string | null = null) => ({
+    nip: 'BRT-2024-0001',
+    slipStatus,
+    slipKey,
+    period: { period: '2026-11' },
+  });
+
+  it('READY: presigned URL 5 menit dengan nama file slip', async () => {
+    const { service, client, storage } = setup();
+    client.payrollItem.findFirst.mockResolvedValue(pdfRow('READY', KEY));
+
+    await expect(service.myPdf(USER, PERIOD)).resolves.toEqual({
+      status: 'READY',
+      url: `https://storage.test/${KEY}?signed=1`,
+      expiresAt: '2026-11-26T03:05:00.000Z',
+    });
+    expect(storage.createPresignedDownload).toHaveBeenCalledWith(
+      KEY,
+      300,
+      'slip-gaji-2026-11-BRT-2024-0001.pdf',
+    );
+    // Karyawan dari JWT, hanya periode terbit.
+    expect(firstArgs(client.payrollItem.findFirst).where).toEqual({
+      employeeId: EMPLOYEE,
+      periodId: PERIOD,
+      period: { status: { in: ['FINAL', 'PAID'] } },
+    });
+  });
+
+  it('QUEUED: masih dibuat (controller membalas 202), tanpa URL', async () => {
+    const { service, client, storage } = setup();
+    client.payrollItem.findFirst.mockResolvedValue(pdfRow('QUEUED'));
+
+    await expect(service.myPdf(USER, PERIOD)).resolves.toEqual({
+      status: 'QUEUED',
+      message: PayrollMessages.slipPdfQueued,
+    });
+    expect(storage.createPresignedDownload).not.toHaveBeenCalled();
+  });
+
+  it('FAILED atau NONE: 409 dengan arahan ke HR', async () => {
+    const { service, client } = setup();
+    client.payrollItem.findFirst.mockResolvedValue(pdfRow('FAILED'));
+    await expect(service.myPdf(USER, PERIOD)).rejects.toThrow(
+      new ConflictException(PayrollMessages.slipPdfFailed),
+    );
+    client.payrollItem.findFirst.mockResolvedValue(pdfRow('NONE'));
+    await expect(service.myPdf(USER, PERIOD)).rejects.toThrow(
+      new ConflictException(PayrollMessages.slipPdfNotRequested),
+    );
+  });
+
+  it('slip DRAFT atau milik orang lain: 404', async () => {
+    const { service, client } = setup();
+    client.payrollItem.findFirst.mockResolvedValue(null);
+
+    await expect(service.myPdf(USER, PERIOD)).rejects.toThrow(
+      NotFoundException,
+    );
   });
 });

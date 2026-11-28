@@ -19,8 +19,46 @@ export const PayrollAuditActions = {
   periodFinalize: 'payroll_period.finalize',
   periodMarkPaid: 'payroll_period.mark_paid',
   periodReopen: 'payroll_period.reopen',
+  payslipsRegenerate: 'payroll_period.regenerate_payslips',
   itemUpdate: 'payroll_item.update',
 } as const;
+
+// ---------------------------------------------------------------------------
+// PDF slip (queue "payslip-pdf")
+// ---------------------------------------------------------------------------
+
+/** Item mana yang dibuat ulang PDF-nya oleh HR. */
+export const RegenerateScope = {
+  /** Hanya slip FAILED (default). */
+  FAILED: 'FAILED',
+  /** Semua slip di periode, termasuk yang sudah READY. */
+  ALL: 'ALL',
+} as const;
+
+export type RegenerateScope =
+  (typeof RegenerateScope)[keyof typeof RegenerateScope];
+
+/** Link PDF untuk karyawan berlaku 5 menit. */
+export const PAYSLIP_PDF_URL_TTL_SECONDS = 5 * 60;
+
+/** Saran jeda polling (header Retry-After) saat PDF masih dibuat. */
+export const PAYSLIP_PDF_RETRY_AFTER_SECONDS = 5;
+
+/** Sama dengan CHECK payroll_items_slip_error_check. */
+export const SLIP_ERROR_MAX_LENGTH = 1000;
+
+/** Halaman slip gaji di portal karyawan (link di email "slip terbit"). */
+export const PAYSLIP_APP_PATH = '/app/gaji';
+
+export const PDF_CONTENT_TYPE = 'application/pdf';
+
+/** Object key PDF slip di storage. */
+export const payslipObjectKey = (period: string, employeeId: string) =>
+  `payslips/${period}/${employeeId}.pdf`;
+
+/** Nama file saat PDF dibuka/diunduh, contoh slip-gaji-2026-11-BRT-2024-0003.pdf. */
+export const payslipFileName = (period: string, nip: string) =>
+  `slip-gaji-${period}-${nip}.pdf`.replace(/[^A-Za-z0-9._-]/g, '-');
 
 export const PERIOD_STATUS_LABELS: Record<PayrollPeriodStatus, string> = {
   DRAFT: 'draft',
@@ -66,4 +104,14 @@ export const PayrollMessages = {
   configExists:
     'Tarif untuk program dan tanggal berlaku ini sudah ada; tarif lama tidak ditimpa. Pakai effectiveFrom lain.',
   wageCapPositive: 'wageCap harus lebih dari 0, atau null untuk tanpa batas',
+  slipPdfQueued: 'Slip PDF sedang dibuat. Coba lagi beberapa saat.',
+  slipPdfFailed: 'Slip PDF gagal dibuat. Hubungi HR supaya slip dibuat ulang.',
+  slipPdfNotRequested: 'Slip PDF belum dibuat. Hubungi HR.',
+  slipsNotPublished:
+    'Slip PDF hanya dibuat untuk payroll yang sudah final atau dibayar',
+  slipChangedDuringRender:
+    'Data slip berubah saat PDF dibuat; dicoba lagi dengan data terbaru',
+  slipEnqueueFailed: 'Gagal menambahkan slip ke antrean PDF',
+  slipQueueUnavailable:
+    'Antrean PDF tidak tersedia. Slip ditandai gagal; coba buat ulang beberapa saat lagi.',
 } as const;

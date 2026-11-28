@@ -22,6 +22,8 @@ const port = z.coerce
 
 const secret = z.string().min(32, 'minimal 32 karakter');
 
+export const QUEUE_DASHBOARD_PASSWORD_MIN_LENGTH = 12;
+
 export const envSchema = z
   .object({
     NODE_ENV: z
@@ -73,11 +75,35 @@ export const envSchema = z
       })
       .default('lax'),
     TZ: z.string().refine(isValidTimeZone, 'zona waktu IANA tidak dikenal'),
+
+    // Bull Board di /admin/queues (basic auth). Mati jika tidak diisi "true".
+    ENABLE_QUEUE_DASHBOARD: z
+      .stringbool({ error: 'harus true atau false' })
+      .default(false),
+    QUEUE_DASHBOARD_USER: z.string().min(1, REQUIRED).optional(),
+    QUEUE_DASHBOARD_PASSWORD: z
+      .string()
+      .min(
+        QUEUE_DASHBOARD_PASSWORD_MIN_LENGTH,
+        `minimal ${QUEUE_DASHBOARD_PASSWORD_MIN_LENGTH} karakter`,
+      )
+      .optional(),
   })
   .refine((env) => env.JWT_ACCESS_SECRET !== env.JWT_REFRESH_SECRET, {
     path: ['JWT_REFRESH_SECRET'],
     message: 'harus berbeda dari JWT_ACCESS_SECRET',
-  });
+  })
+  .refine((env) => !env.ENABLE_QUEUE_DASHBOARD || env.QUEUE_DASHBOARD_USER, {
+    path: ['QUEUE_DASHBOARD_USER'],
+    message: 'wajib diisi jika ENABLE_QUEUE_DASHBOARD=true',
+  })
+  .refine(
+    (env) => !env.ENABLE_QUEUE_DASHBOARD || env.QUEUE_DASHBOARD_PASSWORD,
+    {
+      path: ['QUEUE_DASHBOARD_PASSWORD'],
+      message: 'wajib diisi jika ENABLE_QUEUE_DASHBOARD=true',
+    },
+  );
 
 export type Env = z.infer<typeof envSchema>;
 
@@ -109,7 +135,9 @@ export function validateEnv(config: Record<string, unknown>): Env {
   const problems = result.error.issues.map((issue) => {
     const key = issue.path.join('.');
     const raw = config[key];
-    const missing = raw === undefined || raw === '';
+    // Aturan antar-variabel (refine) membawa pesannya sendiri.
+    const missing =
+      (raw === undefined || raw === '') && issue.code !== 'custom';
     return `${key}: ${missing ? REQUIRED : issue.message}`;
   });
   throw new EnvValidationError([...new Set(problems)]);

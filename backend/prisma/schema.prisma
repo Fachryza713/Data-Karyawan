@@ -439,6 +439,19 @@ enum PayrollPeriodStatus {
   @@map("payroll_period_status")
 }
 
+/// Status file PDF slip (dibuat worker, queue "payslip-pdf").
+/// NONE: belum diminta (periode DRAFT atau setelah reopen). QUEUED: menunggu
+/// atau sedang dibuat. READY: PDF ada di slipKey. FAILED: gagal setelah
+/// semua percobaan, alasan di slipError.
+enum SlipStatus {
+  NONE
+  QUEUED
+  READY
+  FAILED
+
+  @@map("slip_status")
+}
+
 enum BenefitStatus {
   ACTIVE
   INACTIVE
@@ -528,34 +541,39 @@ model PayrollPeriod {
 /// adalah snapshot saat payroll dijalankan; slip FINAL/PAID tidak pernah
 /// dihitung ulang dari data gaji yang sekarang.
 model PayrollItem {
-  id                    String   @id @default(uuid(7)) @db.Uuid
-  periodId              String   @map("period_id") @db.Uuid
-  employeeId            String   @map("employee_id") @db.Uuid
-  employeeName          String   @map("employee_name")
+  id                    String     @id @default(uuid(7)) @db.Uuid
+  periodId              String     @map("period_id") @db.Uuid
+  employeeId            String     @map("employee_id") @db.Uuid
+  employeeName          String     @map("employee_name")
   nip                   String
-  departmentName        String   @map("department_name")
-  positionName          String   @map("position_name")
-  bankName              String   @map("bank_name")
-  bankAccountLast4      String   @map("bank_account_last4") @db.Char(4)
-  baseSalary            Decimal  @map("base_salary") @db.Decimal(15, 2)
-  fixedAllowance        Decimal  @map("fixed_allowance") @db.Decimal(15, 2)
+  departmentName        String     @map("department_name")
+  positionName          String     @map("position_name")
+  bankName              String     @map("bank_name")
+  bankAccountLast4      String     @map("bank_account_last4") @db.Char(4)
+  baseSalary            Decimal    @map("base_salary") @db.Decimal(15, 2)
+  fixedAllowance        Decimal    @map("fixed_allowance") @db.Decimal(15, 2)
   /// Diisi HR, dipertahankan saat payroll dijalankan ulang.
-  bonus                 Decimal  @default(0) @db.Decimal(15, 2)
-  gross                 Decimal  @db.Decimal(15, 2)
-  bpjsKes               Decimal  @map("bpjs_kes") @db.Decimal(15, 2)
-  bpjsJht               Decimal  @map("bpjs_jht") @db.Decimal(15, 2)
-  bpjsJp                Decimal  @map("bpjs_jp") @db.Decimal(15, 2)
+  bonus                 Decimal    @default(0) @db.Decimal(15, 2)
+  gross                 Decimal    @db.Decimal(15, 2)
+  bpjsKes               Decimal    @map("bpjs_kes") @db.Decimal(15, 2)
+  bpjsJht               Decimal    @map("bpjs_jht") @db.Decimal(15, 2)
+  bpjsJp                Decimal    @map("bpjs_jp") @db.Decimal(15, 2)
   /// Diinput manual oleh HR (PRD 6.4), dipertahankan saat dijalankan ulang.
-  pph21                 Decimal  @default(0) @db.Decimal(15, 2)
-  otherDeductions       Decimal  @default(0) @map("other_deductions") @db.Decimal(15, 2)
-  net                   Decimal  @db.Decimal(15, 2)
+  pph21                 Decimal    @default(0) @db.Decimal(15, 2)
+  otherDeductions       Decimal    @default(0) @map("other_deductions") @db.Decimal(15, 2)
+  net                   Decimal    @db.Decimal(15, 2)
   /// Bagian perusahaan per program + total (rupiah sebagai teks).
-  employerContributions Json     @map("employer_contributions")
+  employerContributions Json       @map("employer_contributions")
   /// Tarif dan batas upah yang dipakai menghitung slip ini.
-  configSnapshot        Json     @map("config_snapshot")
+  configSnapshot        Json       @map("config_snapshot")
   note                  String?
-  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt             DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  /// Object key PDF slip di storage: payslips/<period>/<employeeId>.pdf.
+  slipKey               String?    @map("slip_key")
+  slipStatus            SlipStatus @default(NONE) @map("slip_status")
+  /// Alasan gagal percobaan terakhir (diisi saat FAILED).
+  slipError             String?    @map("slip_error")
+  createdAt             DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   period   PayrollPeriod @relation(fields: [periodId], references: [id], onDelete: Restrict)
   employee Employee      @relation(fields: [employeeId], references: [id], onDelete: Restrict)

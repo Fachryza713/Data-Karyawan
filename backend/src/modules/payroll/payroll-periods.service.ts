@@ -48,6 +48,7 @@ import {
   toPayrollItemDto,
   toPayrollPeriodDto,
 } from './payroll.mapper.js';
+import { PayslipPdfService } from './payslip-pdf.service.js';
 
 type Summary = { itemCount: number; totalNet: Prisma.Decimal };
 
@@ -63,6 +64,7 @@ export class PayrollPeriodsService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly clock: Clock,
+    private readonly payslipPdf: PayslipPdfService,
   ) {}
 
   /** Buat periode DRAFT kosong; isi dengan POST /payroll-periods/:id/run. */
@@ -164,19 +166,35 @@ export class PayrollPeriodsService {
     };
   }
 
-  /** DRAFT -> FINAL. Butuh minimal satu slip dan tidak ada take home pay negatif. */
+  /**
+   * DRAFT -> FINAL. Butuh minimal satu slip dan tidak ada take home pay
+   * negatif. Semua slip menjadi QUEUED di transaksi yang sama, lalu setelah
+   * commit satu job PDF per slip (jobId = itemId) masuk queue "payslip-pdf".
+   * Request tidak menunggu PDF dibuat.
+   */
   async finalize(id: string, actor: AuthUser) {
-    return this.transition(id, PayrollPeriodStatus.FINAL, async (tx) => {
-      const items = await tx.payrollItem.findMany({
-        where: { periodId: id },
-        select: { id: true, nip: true, employeeName: true, net: true },
-      });
-      assertFinalizable(items);
-      return {
-        data: { finalizedById: actor.id, finalizedAt: this.clock.now() },
-        audit: { itemCount: items.length },
-      };
-    });
+    let itemIds: string[] = [];
+    const detail = await this.transition(
+      id,
+      PayrollPeriodStatus.FINAL,
+      async (tx) => {
+        const items = await tx.payrollItem.findMany({
+          where: { periodId: id },
+          select: { id: true, nip: true, employeeName: true, net: true },
+        });
+        assertFinalizable(items);
+        await this.payslipPdf.markQueued(tx, id);
+        itemIds = items.map((item) => item.id);
+        return {
+          data: { finalizedById: actor.id, finalizedAt: this.clock.now() },
+          audit: { itemCount: items.length },
+        };
+      },
+    );
+    await this.payslipPdf.enqueue(
+      itemIds.map((itemId) => ({ itemId, notify: true })),
+    );
+    return detail;
   }
 
   /** FINAL -> PAID. Setelah ini periode tidak bisa dibuka atau diubah lagi. */
@@ -186,14 +204,31 @@ export class PayrollPeriodsService {
     );
   }
 
-  /** FINAL -> DRAFT untuk koreksi. Alasan wajib, dicatat di AuditLog. */
+  /**
+   * FINAL -> DRAFT untuk koreksi. Alasan wajib, dicatat di AuditLog. Status
+   * PDF semua slip kembali NONE di transaksi yang sama; PDF lama dihapus
+   * dari storage setelah commit. Job PDF yang masih antre melihat periode
+   * DRAFT dan berhenti tanpa membuat file.
+   */
   async reopen(id: string, reason: string) {
-    return this.transition(id, PayrollPeriodStatus.DRAFT, () =>
-      Promise.resolve({
-        data: { finalizedById: null, finalizedAt: null },
-        audit: { reason },
-      }),
+    let staleFiles: string[] = [];
+    const detail = await this.transition(
+      id,
+      PayrollPeriodStatus.DRAFT,
+      async (tx, current) => {
+        staleFiles = await this.payslipPdf.resetForReopen(
+          tx,
+          id,
+          current.period,
+        );
+        return {
+          data: { finalizedById: null, finalizedAt: null },
+          audit: { reason },
+        };
+      },
     );
+    await this.payslipPdf.deleteFiles(staleFiles);
+    return detail;
   }
 
   /**
@@ -204,7 +239,10 @@ export class PayrollPeriodsService {
   private async transition(
     id: string,
     to: PayrollPeriodStatus,
-    prepare: (tx: AppTransactionClient) => Promise<{
+    prepare: (
+      tx: AppTransactionClient,
+      current: { period: string; status: PayrollPeriodStatus },
+    ) => Promise<{
       data: Prisma.PayrollPeriodUncheckedUpdateManyInput;
       audit: Record<string, unknown>;
     }>,
@@ -225,7 +263,7 @@ export class PayrollPeriodsService {
         throw new NotFoundException(PayrollMessages.periodNotFound);
       }
       assertPeriodTransition(current.status, to);
-      const { data, audit } = await prepare(tx);
+      const { data, audit } = await prepare(tx, current);
       const { count } = await tx.payrollPeriod.updateMany({
         where: { id, status: current.status },
         data: { ...data, status: to },

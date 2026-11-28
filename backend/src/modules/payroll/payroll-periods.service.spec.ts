@@ -5,12 +5,19 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { queryMock } from '../../../test/fixtures/employees.js';
+import { FakeQueue } from '../../../test/fixtures/queue.js';
 import type { AuthUser } from '../../common/auth/auth-user.js';
 import { Prisma } from '../../generated/prisma/client.js';
 import type { PrismaService } from '../../prisma/prisma.service.js';
 import type { AuditService } from '../audit/audit.service.js';
+import type { StorageService } from '../storage/storage.service.js';
 import { PayrollMessages } from './payroll.constants.js';
 import { PayrollPeriodsService } from './payroll-periods.service.js';
+import {
+  PayslipPdfQueue,
+  type PayslipQueueClient,
+} from './payslip-pdf.queue.js';
+import { PayslipPdfService } from './payslip-pdf.service.js';
 
 const d = (value: string) => new Prisma.Decimal(value);
 const PERIOD = '0196b0c4-7c2a-7d3e-9a51-2f7a4c1d9e80';
@@ -61,8 +68,15 @@ function setup(status: 'DRAFT' | 'FINAL' | 'PAID' = 'DRAFT') {
           employeeName: 'A',
           net: d('100'),
         },
+        {
+          id: 'item-2',
+          nip: 'BRT-2024-0002',
+          employeeName: 'B',
+          net: d('200'),
+        },
       ]),
       groupBy: queryMock().mockResolvedValue([]),
+      updateMany: queryMock().mockResolvedValue({ count: 2 }),
     },
     $transaction: jest.fn((fn: (tx: unknown) => Promise<unknown>) =>
       fn(client),
@@ -73,14 +87,27 @@ function setup(status: 'DRAFT' | 'FINAL' | 'PAID' = 'DRAFT') {
       .fn<AuditService['recordChange']>()
       .mockResolvedValue(undefined),
   };
+  const storage = {
+    delete: jest.fn<StorageService['delete']>().mockResolvedValue(undefined),
+  };
+  // PayslipPdfService dan producer asli; hanya Queue BullMQ yang palsu
+  // (FakeQueue meniru aturan jobId BullMQ).
+  const queue = new FakeQueue('payslip-pdf');
+  const payslipPdf = new PayslipPdfService(
+    { client } as unknown as PrismaService,
+    audit as unknown as AuditService,
+    new PayslipPdfQueue(queue as unknown as PayslipQueueClient),
+    storage as unknown as StorageService,
+  );
   const service = new PayrollPeriodsService(
     { client } as unknown as PrismaService,
     audit as unknown as AuditService,
     { now: () => NOW },
+    payslipPdf,
   );
   // findOne() setelah transisi memakai select slip lengkap; cukup kosong.
   const detail = jest.spyOn(service, 'findOne').mockResolvedValue({} as never);
-  return { service, client, audit, detail };
+  return { service, client, audit, detail, queue, storage };
 }
 
 describe('PayrollPeriodsService.create', () => {
@@ -129,7 +156,7 @@ describe('PayrollPeriodsService transisi status', () => {
     });
     expect(audit.recordChange.mock.calls[0][0]).toMatchObject({
       before: { status: 'DRAFT', finalizedById: null },
-      after: { status: 'FINAL', finalizedById: hr.id, itemCount: 1 },
+      after: { status: 'FINAL', finalizedById: hr.id, itemCount: 2 },
     });
   });
 
@@ -218,6 +245,118 @@ describe('PayrollPeriodsService transisi status', () => {
     client.payrollPeriod.findUnique.mockResolvedValue(null);
 
     await expect(service.markPaid(PERIOD)).rejects.toThrow(NotFoundException);
+  });
+});
+
+describe('PayrollPeriodsService: PDF slip saat finalize dan reopen', () => {
+  const itemIds = ['item-1', 'item-2'];
+
+  it('finalize: slip QUEUED di transaksi yang sama, lalu satu job per slip (jobId = itemId) setelah commit', async () => {
+    const { service, client, queue } = setup('DRAFT');
+
+    await service.finalize(PERIOD, hr);
+
+    expect(client.payrollItem.updateMany).toHaveBeenCalledWith({
+      where: { periodId: PERIOD },
+      data: { slipStatus: 'QUEUED', slipKey: null, slipError: null },
+    });
+    // Job baru dimasukkan setelah status periode berubah (setelah commit).
+    expect(
+      client.payrollPeriod.updateMany.mock.invocationCallOrder[0],
+    ).toBeLessThan(queue.addBulk.mock.invocationCallOrder[0]);
+    expect([...queue.jobs.values()].map((job) => [job.id, job.data])).toEqual(
+      itemIds.map((itemId) => [itemId, { itemId, notify: true }]),
+    );
+  });
+
+  it('finalize dua kali tidak menggandakan job', async () => {
+    const { service, client, queue } = setup('DRAFT');
+
+    await service.finalize(PERIOD, hr);
+    // Panggilan kedua ditolak status FINAL (409) sebelum menyentuh queue.
+    client.payrollPeriod.findUnique.mockResolvedValue({
+      ...periodRow('FINAL'),
+      finalizedById: hr.id,
+    });
+    await expect(service.finalize(PERIOD, hr)).rejects.toThrow(
+      ConflictException,
+    );
+
+    expect(queue.addBulk).toHaveBeenCalledTimes(1);
+    expect(queue.jobs.size).toBe(2);
+  });
+
+  it('finalize dua kali yang sama-sama sampai ke enqueue (balapan/retry): tetap satu job per slip', async () => {
+    const { service, queue } = setup('DRAFT');
+
+    // Mock database tetap DRAFT, jadi kedua panggilan memasukkan job.
+    await Promise.all([
+      service.finalize(PERIOD, hr),
+      service.finalize(PERIOD, hr),
+    ]);
+
+    expect(queue.requested).toHaveLength(4);
+    expect([...queue.jobs.keys()]).toEqual(itemIds);
+  });
+
+  it('Redis mati saat finalize: request tetap selesai, slip ditandai FAILED', async () => {
+    const { service, client, queue } = setup('DRAFT');
+    queue.getJob.mockRejectedValue(new Error('connect ECONNREFUSED'));
+
+    // findOne() di-mock {}: finalize mengembalikan detail periode, bukan error.
+    await expect(service.finalize(PERIOD, hr)).resolves.toEqual({});
+
+    expect(client.payrollPeriod.updateMany).toHaveBeenCalled();
+    expect(client.payrollItem.updateMany).toHaveBeenLastCalledWith({
+      where: { id: { in: itemIds }, slipStatus: 'QUEUED' },
+      data: {
+        slipStatus: 'FAILED',
+        slipError:
+          'Gagal menambahkan slip ke antrean PDF: connect ECONNREFUSED',
+      },
+    });
+  });
+
+  it('reopen: slip kembali NONE di transaksi yang sama, PDF lama dihapus setelah commit', async () => {
+    const { service, client, storage } = setup('FINAL');
+    client.payrollItem.findMany.mockResolvedValue([
+      { employeeId: 'emp-1', slipKey: 'payslips/2026-11/emp-1.pdf' },
+      { employeeId: 'emp-2', slipKey: null },
+    ]);
+
+    await service.reopen(PERIOD, 'Koreksi bonus');
+
+    expect(client.payrollItem.updateMany).toHaveBeenCalledWith({
+      where: { periodId: PERIOD },
+      data: { slipStatus: 'NONE', slipKey: null, slipError: null },
+    });
+    expect(storage.delete.mock.calls.map(([key]) => key)).toEqual([
+      'payslips/2026-11/emp-1.pdf',
+      'payslips/2026-11/emp-2.pdf',
+    ]);
+    expect(
+      client.payrollPeriod.updateMany.mock.invocationCallOrder[0],
+    ).toBeLessThan(storage.delete.mock.invocationCallOrder[0]);
+  });
+
+  it('reopen tetap berhasil walau sebagian PDF gagal dihapus', async () => {
+    const { service, client, storage } = setup('FINAL');
+    client.payrollItem.findMany.mockResolvedValue([
+      { employeeId: 'emp-1', slipKey: null },
+    ]);
+    storage.delete.mockRejectedValue(new Error('MinIO down'));
+
+    await expect(service.reopen(PERIOD, 'x')).resolves.toBeDefined();
+  });
+
+  it('reopen yang ditolak (PAID) tidak menyentuh status slip dan file', async () => {
+    const { service, client, storage } = setup('PAID');
+
+    await expect(service.reopen(PERIOD, 'x')).rejects.toThrow(
+      ConflictException,
+    );
+    expect(client.payrollItem.updateMany).not.toHaveBeenCalled();
+    expect(storage.delete).not.toHaveBeenCalled();
   });
 });
 
