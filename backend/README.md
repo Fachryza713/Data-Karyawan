@@ -75,22 +75,22 @@ Konfigurasi environment tidak valid (2 masalah):
 
 ## Script
 
-| Perintah                               | Fungsi                                                    |
-| -------------------------------------- | --------------------------------------------------------- |
-| `npm run start:dev`                    | Jalankan dengan hot reload                                |
-| `npm run start:worker:dev`             | Jalankan worker BullMQ dengan hot reload (`dist-worker/`) |
-| `npm run start:worker:prod`            | Jalankan worker hasil build (`node dist/worker.js`)       |
-| `npm run build`                        | Compile ke `dist/`                                        |
-| `npm run lint`                         | ESLint + cek format Prettier                              |
-| `npm run lint:fix`                     | Perbaiki lint dan format                                  |
-| `npm test`                             | Unit test (`src/**/*.spec.ts`)                            |
-| `npm run test:e2e`                     | Test e2e (`test/`), dependensi di-mock, tanpa Docker      |
-| `npm run test:int`                     | Integration test dengan PostgreSQL asli (cuti, payroll)   |
-| `npm run test:cov`                     | Unit test + coverage                                      |
-| `npx prisma migrate dev --name <nama>` | Buat dan terapkan migrasi baru                            |
-| `npm run db:seed`                      | Isi data demo (idempoten, aman dijalankan ulang)          |
-| `npm run erd`                          | Gambar ulang ERD ke `../docs/erd.svg`                     |
-| `npm run prisma:studio`                | Lihat isi database                                        |
+| Perintah                               | Fungsi                                                       |
+| -------------------------------------- | ------------------------------------------------------------ |
+| `npm run start:dev`                    | Jalankan dengan hot reload                                   |
+| `npm run start:worker:dev`             | Jalankan worker BullMQ dengan hot reload (`dist-worker/`)    |
+| `npm run start:worker:prod`            | Jalankan worker hasil build (`node dist/worker.js`)          |
+| `npm run build`                        | Compile ke `dist/`                                           |
+| `npm run lint`                         | ESLint + cek format Prettier                                 |
+| `npm run lint:fix`                     | Perbaiki lint dan format                                     |
+| `npm test`                             | Unit test (`src/**/*.spec.ts`)                               |
+| `npm run test:e2e`                     | Test e2e (`test/`), dependensi di-mock, tanpa Docker         |
+| `npm run test:int`                     | Integration test dengan PostgreSQL asli (cuti, payroll, KPI) |
+| `npm run test:cov`                     | Unit test + coverage                                         |
+| `npx prisma migrate dev --name <nama>` | Buat dan terapkan migrasi baru                               |
+| `npm run db:seed`                      | Isi data demo (idempoten, aman dijalankan ulang)             |
+| `npm run erd`                          | Gambar ulang ERD ke `../docs/erd.svg`                        |
+| `npm run prisma:studio`                | Lihat isi database                                           |
 
 ## Struktur
 
@@ -122,7 +122,7 @@ backend/
 │   ├── prisma/                 PrismaModule global, PrismaService, extension soft delete
 │   ├── redis/                  klien Redis global
 │   ├── queue/                  BullMQ (QueueModule global), Bull Board /admin/queues
-│   ├── modules/                modul fitur: auth, audit, mail, storage, employees, organization, health
+│   ├── modules/                modul fitur: auth, audit, mail, storage, employees, organization, settings, attendance, leave, payroll, kpi, health
 │   └── generated/prisma/       hasil prisma generate (tidak di-commit)
 └── test/                       test e2e dan fixtures/ (data mock bersama unit test)
 ```
@@ -384,6 +384,27 @@ PDF dibuat proses worker terpisah (`src/worker.ts`, service `worker` di docker-c
 6. **Reopen**: status slip kembali `NONE` di transaksi reopen, PDF lama dihapus dari storage setelah commit.
 
 Bull Board (`/admin/queues`, di luar `/api/v1`) hanya aktif jika `ENABLE_QUEUE_DASHBOARD=true`, dilindungi basic auth `QUEUE_DASHBOARD_USER`/`QUEUE_DASHBOARD_PASSWORD` (minimal 12 karakter).
+
+## KPI (hanya HR)
+
+Semua endpoint `@Roles(HR)`. Karyawan tidak punya endpoint KPI sama sekali, termasuk untuk penilaiannya sendiri (PRD 6.5); test e2e mencoba setiap endpoint KPI di Swagger dengan token karyawan dan semuanya harus 403.
+
+| Endpoint (`/api/v1/...`)                                                        | Fungsi                                                               |
+| ------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `GET/POST kpi-templates`, `GET/PATCH kpi-templates/:id`                         | Template per jabatan (total bobot, `isValid`, `problem` di response) |
+| `POST kpi-templates/:id/indicators`, `PATCH/DELETE .../indicators/:indicatorId` | CRUD indikator (nama, deskripsi, bobot, target, urutan)              |
+| `POST kpi-templates/copy`                                                       | Salin template aktif dari jabatan lain                               |
+| `GET/POST kpi-periods`, `GET/PATCH kpi-periods/:id`                             | Periode DRAFT (PATCH: ACTIVE hanya deadline, CLOSED terkunci)        |
+| `POST kpi-periods/:id/activate` / `close`                                       | DRAFT -> ACTIVE (buat penilaian) -> CLOSED                           |
+| `GET kpi-periods/:id/progress`                                                  | Dinilai (FINAL) / total, rata-rata nilai akhir, tenggat              |
+| `GET kpi-reviews?periodId=&departmentId=&status=&page=&limit=`                  | Daftar penilaian                                                     |
+| `GET kpi-reviews/:id`, `PUT kpi-reviews/:id/scores`, `POST .../finalize`        | Detail, isi skor (menimpa), finalisasi                               |
+
+- **Bobot dan skor** berupa teks desimal 0-100 maksimal 2 desimal (`"33.33"`), disimpan `Decimal(5,2)`. Template valid jika punya indikator dan total bobotnya tepat 100 dengan `Decimal.equals` (33,33 + 33,33 + 33,34 valid; 33,33 x 3 tidak). Maksimal 20 indikator, nama unik per template.
+- **Satu template aktif per jabatan** dan **satu periode ACTIVE**: index unik parsial (`partialIndexes` preview Prisma). Mengaktifkan template menonaktifkan template aktif lain di jabatan itu dalam transaksi yang sama.
+- **Aktivasi** (satu transaksi): karyawan aktif = belum dihapus, akun aktif, `joinDate <= endDate`. Jabatan yang punya karyawan aktif tapi tanpa template valid membuat aktivasi ditolak 422 dengan `details.positions`. Lalu status ACTIVE dan satu `KpiReview` DRAFT per karyawan; jabatan, departemen, template, serta nama/bobot/target/urutan indikator disalin (snapshot) ke review dan `KpiScore`, jadi perubahan template tidak mengubah review lama.
+- **Penilaian**: `PUT scores` hanya untuk review DRAFT di periode ACTIVE, tepat satu skor per indikator (422 dengan `details.missing/unknown/duplicate`). Baris review dikunci `FOR UPDATE` dan periodenya `FOR SHARE`. HR tidak bisa menilai KPI dirinya sendiri (403). Finalisasi: nilai akhir = jumlah(skor x bobot / 100), dibulatkan sekali ke 1 desimal (`ROUND_HALF_UP`); grade A >= 85, B >= 70, C >= 55, D < 55. Setelah FINAL skor terkunci (409).
+- **Audit**: perubahan template dan indikator, periode (buat, ubah, aktivasi, tutup), dan finalisasi review.
 
 ## Image produksi
 

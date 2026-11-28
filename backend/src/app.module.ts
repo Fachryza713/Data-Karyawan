@@ -9,6 +9,7 @@ import { AuditModule } from './modules/audit/audit.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
 import { EmployeesModule } from './modules/employees/employees.module.js';
 import { HealthModule } from './modules/health/health.module.js';
+import { KpiModule } from './modules/kpi/kpi.module.js';
 import { LeaveModule } from './modules/leave/leave.module.js';
 import { MailModule } from './modules/mail/mail.module.js';
 import { OrganizationModule } from './modules/organization/organization.module.js';
@@ -47,6 +48,7 @@ import { RedisModule } from './redis/redis.module.js';
     LeaveModule,
     AttendanceModule,
     PayrollModule,
+    KpiModule,
     HealthModule,
   ],
 })
