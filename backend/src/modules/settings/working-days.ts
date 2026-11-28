@@ -1,6 +1,7 @@
 import {
   isValidDateOnly,
   parseDateOnly,
+  toDateOnly,
   toWibDateOnly,
 } from '../../common/validation/date-only.js';
 
@@ -77,4 +78,33 @@ export function countWorkingDays(
     }
   }
   return workingDays;
+}
+
+/**
+ * Tanggal hari kerja dari start sampai end (inklusif), urut naik. Jumlahnya
+ * selalu sama dengan countWorkingDays untuk input yang sama. Dipakai saat
+ * cuti disetujui untuk menulis satu baris presensi per hari kerja.
+ */
+export function listWorkingDays(
+  start: string,
+  end: string,
+  holidays: Iterable<string>,
+): string[] {
+  if (start > end) {
+    return [];
+  }
+  const offDays = new Set(holidays);
+  const days: string[] = [];
+  const last = parseDateOnly(end).getTime();
+  for (
+    let time = parseDateOnly(start).getTime();
+    time <= last;
+    time += DAY_MS
+  ) {
+    const date = toDateOnly(new Date(time));
+    if (!isWeekend(date) && !offDays.has(date)) {
+      days.push(date);
+    }
+  }
+  return days;
 }

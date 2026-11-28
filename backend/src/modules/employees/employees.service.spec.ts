@@ -17,6 +17,7 @@ import type { PrismaService } from '../../prisma/prisma.service.js';
 import type { AuditService } from '../audit/audit.service.js';
 import type { PasswordResetService } from '../auth/password-reset.service.js';
 import type { RefreshTokenService } from '../auth/refresh-token.service.js';
+import type { LeaveBalanceService } from '../leave/leave-balance.service.js';
 import type {
   CreateEmployeeDto,
   UpdateEmployeeDto,
@@ -117,6 +118,11 @@ function setup() {
   const invitation = {
     send: jest.fn<EmployeeInvitationService['send']>().mockResolvedValue(true),
   };
+  const leaveBalances = {
+    ensureForEmployee: jest
+      .fn<LeaveBalanceService['ensureForEmployee']>()
+      .mockResolvedValue(undefined),
+  };
   const storage = storageMock();
 
   const service = new EmployeesService(
@@ -126,6 +132,7 @@ function setup() {
     passwordReset as unknown as PasswordResetService,
     refreshTokens as unknown as RefreshTokenService,
     invitation as unknown as EmployeeInvitationService,
+    leaveBalances as unknown as LeaveBalanceService,
   );
   return {
     service,
@@ -136,6 +143,7 @@ function setup() {
     passwordReset,
     refreshTokens,
     invitation,
+    leaveBalances,
   };
 }
 
@@ -300,6 +308,7 @@ describe('EmployeesService.create', () => {
       passwordReset,
       audit,
       invitation,
+      leaveBalances,
     } = setup();
     employee.create.mockResolvedValue(
       employeeRow({ nip: 'BRT-2026-0042', fullName: 'Karyawan Baru' }),
@@ -325,6 +334,11 @@ describe('EmployeesService.create', () => {
     expect(passwordReset.issueToken).toHaveBeenCalledWith(
       IDS.user,
       INVITATION_TTL_MS,
+      client,
+    );
+    // Saldo cuti tahun berjalan ikut transaksi pembuatan karyawan.
+    expect(leaveBalances.ensureForEmployee).toHaveBeenCalledWith(
+      IDS.employee,
       client,
     );
     const [change, tx] = audit.recordChange.mock.calls[0];

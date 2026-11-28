@@ -23,7 +23,9 @@ generator client {
 datasource db {
   provider   = "postgresql"
   // pg_trgm: index GIN untuk pencarian nama/NIP dengan ILIKE '%kata%'.
-  extensions = [pg_trgm]
+  // btree_gist: EXCLUDE constraint anti tumpang tindih di leave_requests
+  // (uuid = dan daterange && dalam satu index GiST).
+  extensions = [pg_trgm, btree_gist]
 }
 
 // ---------------------------------------------------------------------------
@@ -89,10 +91,11 @@ model User {
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt    DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  employee            Employee?
-  auditLogs           AuditLog[]
-  refreshTokens       RefreshToken[]
-  passwordResetTokens PasswordResetToken[]
+  employee              Employee?
+  auditLogs             AuditLog[]
+  refreshTokens         RefreshToken[]
+  passwordResetTokens   PasswordResetToken[]
+  reviewedLeaveRequests LeaveRequest[]
 
   @@map("users")
 }
@@ -126,6 +129,8 @@ model Employee {
   officeLocation OfficeLocation @relation(fields: [officeLocationId], references: [id], onDelete: Restrict)
   shift          Shift          @relation(fields: [shiftId], references: [id], onDelete: Restrict)
   attendances    Attendance[]
+  leaveBalances  LeaveBalance[]
+  leaveRequests  LeaveRequest[]
 
   // Filter daftar karyawan per departemen (selalu bersama deleted_at IS NULL).
   @@index([departmentId, deletedAt])
@@ -302,6 +307,108 @@ model Attendance {
   // Log dan ringkasan HR per tanggal.
   @@index([date, status])
   @@map("attendances")
+}
+
+// ---------------------------------------------------------------------------
+// Cuti, izin, WFH, dan dinas luar
+// ---------------------------------------------------------------------------
+
+/// LEAVE = cuti/sakit/izin (punya leaveTypeId). WFH dan BUSINESS_TRIP membuka
+/// absen di luar radius kantor pada tanggal yang disetujui.
+enum LeaveRequestKind {
+  LEAVE
+  WFH
+  BUSINESS_TRIP
+
+  @@map("leave_request_kind")
+}
+
+/// PENDING bisa menjadi APPROVED, REJECTED, atau CANCELLED. Tiga status
+/// terakhir final.
+enum LeaveRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+
+  @@map("leave_request_status")
+}
+
+/// Jenis cuti. Data awal (ANNUAL, SICK, SPECIAL) diisi migrasi `leave_requests`.
+model LeaveType {
+  id                          String   @id @default(uuid(7)) @db.Uuid
+  /// Kode stabil huruf besar, contoh ANNUAL (dicek CHECK constraint).
+  code                        String   @unique
+  name                        String
+  /// Kuota hari kerja per tahun kalender. Null = tidak terbatas.
+  annualQuota                 Int?     @map("annual_quota")
+  /// Disetujui = LeaveBalance.used bertambah. Hanya cuti tahunan.
+  deductsQuota                Boolean  @default(false) @map("deducts_quota")
+  /// Lampiran wajib jika hari kerja lebih dari nilai ini. Null = opsional.
+  attachmentRequiredAfterDays Int?     @map("attachment_required_after_days")
+  createdAt                   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  requests LeaveRequest[]
+
+  @@map("leave_types")
+}
+
+/// Kuota cuti tahunan per karyawan per tahun. Sisa = quota - used.
+/// CHECK constraint used <= quota adalah pengaman terakhir: approve menambah
+/// used dengan satu UPDATE bersyarat, bukan baca-cek-tulis.
+model LeaveBalance {
+  id         String   @id @default(uuid(7)) @db.Uuid
+  employeeId String   @map("employee_id") @db.Uuid
+  year       Int
+  quota      Int
+  used       Int      @default(0)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  // Kolom pertama juga melayani foreign key employee_id.
+  @@unique([employeeId, year])
+  @@map("leave_balances")
+}
+
+/// Pengajuan cuti, WFH, atau dinas luar. Pengajuan PENDING/APPROVED milik
+/// satu karyawan tidak boleh tumpang tindih (EXCLUDE constraint di migrasi).
+model LeaveRequest {
+  id            String             @id @default(uuid(7)) @db.Uuid
+  employeeId    String             @map("employee_id") @db.Uuid
+  kind          LeaveRequestKind
+  /// Wajib untuk kind LEAVE, kosong untuk WFH/BUSINESS_TRIP.
+  leaveTypeId   String?            @map("leave_type_id") @db.Uuid
+  startDate     DateTime           @map("start_date") @db.Date
+  endDate       DateTime           @map("end_date") @db.Date
+  /// Hari kerja dalam rentang (tanpa akhir pekan dan libur). Dihitung ulang saat approve.
+  workingDays   Int                @map("working_days")
+  reason        String
+  /// Kota/lokasi tujuan, wajib untuk BUSINESS_TRIP.
+  destination   String?
+  /// Object key lampiran di storage: leave/<employeeId>/<uuid>.
+  attachmentKey String?            @map("attachment_key")
+  status        LeaveRequestStatus @default(PENDING)
+  /// Akun HR yang menyetujui/menolak.
+  reviewedById  String?            @map("reviewed_by_id") @db.Uuid
+  reviewedAt    DateTime?          @map("reviewed_at") @db.Timestamptz(3)
+  reviewNote    String?            @map("review_note")
+  createdAt     DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  employee   Employee   @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  leaveType  LeaveType? @relation(fields: [leaveTypeId], references: [id], onDelete: Restrict)
+  reviewedBy User?      @relation(fields: [reviewedById], references: [id], onDelete: Restrict)
+
+  // Riwayat milik karyawan, cek tumpang tindih, dan izin WFH/dinas per tanggal.
+  @@index([employeeId, startDate])
+  // Daftar HR: filter status, urut tanggal mulai terdekat.
+  @@index([status, startDate])
+  @@index([leaveTypeId])
+  @@index([reviewedById])
+  @@map("leave_requests")
 }
 
 // ---------------------------------------------------------------------------

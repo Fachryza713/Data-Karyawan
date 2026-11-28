@@ -1,4 +1,3 @@
-import { Injectable } from '@nestjs/common';
 import { AttendanceMode } from '../../generated/prisma/enums.js';
 
 export type RemoteWorkMode =
@@ -9,6 +8,7 @@ export type ApprovedRemoteWork = { mode: RemoteWorkMode };
 /**
  * Sumber izin kerja di luar kantor (WFH atau dinas luar) yang sudah
  * disetujui. Absen di luar radius hanya diterima jika ada izin ini.
+ * Implementasi: ApprovedRemoteWorkPolicy di modul leave.
  */
 export interface RemoteWorkPolicy {
   /** `date` adalah tanggal WIB "YYYY-MM-DD". Null jika tidak ada izin. */
@@ -19,15 +19,3 @@ export interface RemoteWorkPolicy {
 }
 
 export const REMOTE_WORK_POLICY = Symbol('REMOTE_WORK_POLICY');
-
-/**
- * Implementasi sementara: modul pengajuan WFH/dinas belum ada, jadi tidak
- * pernah ada izin. Diganti di prompt cuti/WFH lewat provider
- * REMOTE_WORK_POLICY, tanpa mengubah AttendanceService.
- */
-@Injectable()
-export class NoRemoteWorkPolicy implements RemoteWorkPolicy {
-  hasApprovedRemote(): Promise<ApprovedRemoteWork | null> {
-    return Promise.resolve(null);
-  }
-}

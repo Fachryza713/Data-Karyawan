@@ -8,6 +8,7 @@
 # Port di host:
 #   API + Swagger  http://localhost:3000/docs
 #   PostgreSQL     localhost:5432  (hris / hris, database hris)
+#   PostgreSQL test localhost:5433 (hris / hris, database hris_test, profile test)
 #   Redis          localhost:6379
 #   MinIO S3       http://localhost:9000, console http://localhost:9001 (minioadmin / minioadmin)
 #   Mailpit        SMTP localhost:1025, UI http://localhost:8025
@@ -37,6 +38,27 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+
+  # Database khusus integration test (npm run test:int). Data di tmpfs:
+  # hilang saat container berhenti. Profile "test": tidak ikut
+  # `docker compose up -d`, jalankan dengan `docker compose up -d postgres-test`.
+  postgres-test:
+    image: postgres:16-alpine
+    profiles: ['test']
+    environment:
+      POSTGRES_USER: hris
+      POSTGRES_PASSWORD: hris
+      POSTGRES_DB: hris_test
+      TZ: Asia/Jakarta
+    ports:
+      - '5433:5432'
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U hris -d hris_test']
+      interval: 2s
+      timeout: 5s
+      retries: 15
 
   redis:
     image: redis:7-alpine
