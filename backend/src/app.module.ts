@@ -16,6 +16,7 @@ import { PayrollModule } from './modules/payroll/payroll.module.js';
 import { SettingsModule } from './modules/settings/settings.module.js';
 import { StorageModule } from './modules/storage/storage.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
+import { QueueModule } from './queue/queue.module.js';
 import { RedisModule } from './redis/redis.module.js';
 
 @Module({
@@ -34,6 +35,8 @@ import { RedisModule } from './redis/redis.module.js';
     ScheduleModule.forRoot(),
     PrismaModule,
     RedisModule,
+    // BullMQ: API memasukkan job, proses worker (src/worker.ts) mengerjakannya.
+    QueueModule,
     AuditModule,
     MailModule,
     StorageModule,

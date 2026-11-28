@@ -48,6 +48,17 @@ export function formatRate(value: Prisma.Decimal): string {
   return value.toFixed(4);
 }
 
+/**
+ * Rupiah untuk dibaca orang (PDF slip, email): "Rp 8.500.000,00".
+ * Titik pemisah ribuan, koma desimal. Dihitung dari teks toFixed(2), bukan
+ * dari number, jadi tidak ada pembulatan float.
+ */
+export function formatRupiah(value: Prisma.Decimal): string {
+  const [whole, cents] = value.abs().toFixed(2).split('.');
+  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return `${value.lessThan(0) ? '-' : ''}Rp ${grouped},${cents}`;
+}
+
 export function zeroMoney(): Prisma.Decimal {
   return new Prisma.Decimal(0);
 }

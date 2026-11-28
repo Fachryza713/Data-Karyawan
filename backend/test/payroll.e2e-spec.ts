@@ -8,6 +8,7 @@ import { configureApp } from '../src/app.setup.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
 import { REDIS_CLIENT } from '../src/redis/redis.module.js';
 import { IDS } from './fixtures/employees.js';
+import { withFakeQueues } from './fixtures/queue.js';
 
 /**
  * Wiring modul payroll di aplikasi utuh: role per controller, /me dari JWT,
@@ -36,7 +37,9 @@ describe('Payroll (e2e)', () => {
       salaryStructure: { create: createSalary },
       benefit: { findMany: jest.fn(() => Promise.resolve([])) },
     };
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+    const moduleRef = await withFakeQueues(
+      Test.createTestingModule({ imports: [AppModule] }),
+    )
       .overrideProvider(PrismaService)
       .useValue({ client })
       .overrideProvider(REDIS_CLIENT)
@@ -86,6 +89,8 @@ describe('Payroll (e2e)', () => {
     ['post', `/api/v1/payroll-periods/${PERIOD}/finalize`],
     ['get', `/api/v1/payroll-periods/${PERIOD}/employer-contributions`],
     ['patch', `/api/v1/payroll-items/${PERIOD}`],
+    ['post', `/api/v1/payroll-periods/${PERIOD}/payslips/regenerate`],
+    ['get', `/api/v1/payroll-periods/${PERIOD}/payslips/status`],
   ] as const)('%s %s sebagai karyawan -> 403', async (method, path) => {
     await http()[method](path).set(as(employeeToken)).expect(403);
   });
@@ -94,6 +99,7 @@ describe('Payroll (e2e)', () => {
     ['get', '/api/v1/payslips/me'],
     ['get', '/api/v1/benefits/me'],
     ['get', '/api/v1/payroll-periods'],
+    ['get', `/api/v1/payslips/me/${PERIOD}/pdf`],
   ] as const)('%s %s tanpa token -> 401', async (method, path) => {
     await http()[method](path).expect(401);
   });
@@ -165,6 +171,85 @@ describe('Payroll (e2e)', () => {
       .expect(400);
   });
 
+  describe('GET /payslips/me/:periodId/pdf', () => {
+    const pdfItem = (slipStatus: string, slipKey: string | null = null) => ({
+      nip: 'BRT-2024-0003',
+      slipStatus,
+      slipKey,
+      period: { period: '2026-11' },
+    });
+
+    it('READY -> 200 { url } presigned 5 menit, karyawan dari JWT', async () => {
+      findFirstItem.mockResolvedValue(
+        pdfItem('READY', `payslips/2026-11/${IDS.employee}.pdf`),
+      );
+
+      const res = await http()
+        .get(`/api/v1/payslips/me/${PERIOD}/pdf`)
+        .set(as(employeeToken))
+        .expect(200);
+
+      const url = new URL(res.body.url as string);
+      expect(url.pathname).toBe(
+        `/hris-test/payslips/2026-11/${IDS.employee}.pdf`,
+      );
+      expect(url.searchParams.get('X-Amz-Expires')).toBe('300');
+      expect(res.body.status).toBe('READY');
+      expect(findFirstItem).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            employeeId: IDS.employee,
+            periodId: PERIOD,
+            period: { status: { in: ['FINAL', 'PAID'] } },
+          },
+        }),
+      );
+    });
+
+    it('QUEUED -> 202 dengan Retry-After', async () => {
+      findFirstItem.mockResolvedValue(pdfItem('QUEUED'));
+
+      const res = await http()
+        .get(`/api/v1/payslips/me/${PERIOD}/pdf`)
+        .set(as(employeeToken))
+        .expect(202);
+
+      expect(res.headers['retry-after']).toBe('5');
+      expect(res.body).toEqual({
+        status: 'QUEUED',
+        message: expect.stringMatching(/sedang dibuat/),
+      });
+    });
+
+    it('FAILED -> 409; belum terbit -> 404', async () => {
+      findFirstItem.mockResolvedValue(pdfItem('FAILED'));
+      await http()
+        .get(`/api/v1/payslips/me/${PERIOD}/pdf`)
+        .set(as(employeeToken))
+        .expect(409);
+
+      findFirstItem.mockResolvedValue(null);
+      await http()
+        .get(`/api/v1/payslips/me/${PERIOD}/pdf`)
+        .set(as(employeeToken))
+        .expect(404);
+    });
+  });
+
+  it('regenerate: scope selain FAILED/ALL ditolak 400 sebelum menyentuh database', async () => {
+    const res = await http()
+      .post(`/api/v1/payroll-periods/${PERIOD}/payslips/regenerate`)
+      .set(as(hrToken))
+      .send({ scope: 'READY' })
+      .expect(400);
+
+    expect(res.body.message).toEqual(['scope harus FAILED atau ALL']);
+  });
+
+  it('Bull Board mati jika ENABLE_QUEUE_DASHBOARD tidak true', async () => {
+    await http().get('/admin/queues').expect(404);
+  });
+
   it('Swagger mendokumentasikan semua endpoint payroll', async () => {
     const res = await http().get('/docs-json').expect(200);
     const paths = Object.keys((res.body as { paths: object }).paths);
@@ -185,6 +270,9 @@ describe('Payroll (e2e)', () => {
         '/api/v1/payroll-items/{id}',
         '/api/v1/payslips/me',
         '/api/v1/payslips/me/{periodId}',
+        '/api/v1/payslips/me/{periodId}/pdf',
+        '/api/v1/payroll-periods/{id}/payslips/regenerate',
+        '/api/v1/payroll-periods/{id}/payslips/status',
         '/api/v1/benefits/me',
       ]),
     );

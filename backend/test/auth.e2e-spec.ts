@@ -7,6 +7,7 @@ import { AppModule } from '../src/app.module.js';
 import { configureApp } from '../src/app.setup.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
 import { REDIS_CLIENT } from '../src/redis/redis.module.js';
+import { withFakeQueues } from './fixtures/queue.js';
 
 /**
  * Wiring auth di aplikasi utuh: guard global, @Public, throttler, cookie,
@@ -21,7 +22,9 @@ describe('Auth (e2e)', () => {
   const throttleEval = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+    const moduleRef = await withFakeQueues(
+      Test.createTestingModule({ imports: [AppModule] }),
+    )
       .overrideProvider(PrismaService)
       .useValue({
         client: {

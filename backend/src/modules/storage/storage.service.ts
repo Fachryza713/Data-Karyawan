@@ -2,6 +2,7 @@ import {
   DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
+  PutObjectCommand,
   S3Client,
   S3ServiceException,
 } from '@aws-sdk/client-s3';
@@ -15,6 +16,9 @@ import type { Env } from '../../config/env.validation.js';
 export const UPLOAD_URL_TTL_SECONDS = 5 * 60;
 /** Presigned URL download (photoUrl) berlaku 1 jam. */
 export const DOWNLOAD_URL_TTL_SECONDS = 60 * 60;
+
+/** Nama file untuk header Content-Disposition presigned GET. */
+const SAFE_FILE_NAME = /^[A-Za-z0-9._-]{1,128}$/;
 
 /**
  * Upload langsung dari browser ke storage: POST multipart/form-data ke `url`
@@ -117,15 +121,45 @@ export class StorageService implements OnModuleDestroy {
     };
   }
 
-  /** Presigned GET, berlaku `ttlSeconds` detik. */
-  createPresignedDownload(
+  /**
+   * Presigned GET, berlaku `ttlSeconds` detik. `fileName` (huruf, angka,
+   * titik, strip, garis bawah) menjadi nama file saat dibuka/diunduh browser.
+   */
+  async createPresignedDownload(
     key: string,
     ttlSeconds = DOWNLOAD_URL_TTL_SECONDS,
+    fileName?: string,
   ): Promise<string> {
+    if (fileName !== undefined && !SAFE_FILE_NAME.test(fileName)) {
+      throw new Error(`Nama file tidak valid: ${fileName}`);
+    }
     return getSignedUrl(
       this.presigner,
-      new GetObjectCommand({ Bucket: this.bucket, Key: key }),
+      new GetObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        ...(fileName
+          ? { ResponseContentDisposition: `inline; filename="${fileName}"` }
+          : {}),
+      }),
       { expiresIn: ttlSeconds },
+    );
+  }
+
+  /** Tulis (atau timpa) object dari server, contoh PDF slip dari worker. */
+  async putObject(
+    key: string,
+    body: Uint8Array,
+    contentType: string,
+  ): Promise<void> {
+    await this.client.send(
+      new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        Body: body,
+        ContentType: contentType,
+        ContentLength: body.byteLength,
+      }),
     );
   }
 

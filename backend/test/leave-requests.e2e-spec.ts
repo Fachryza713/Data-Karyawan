@@ -9,6 +9,7 @@ import { Clock } from '../src/common/time/clock.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
 import { REDIS_CLIENT } from '../src/redis/redis.module.js';
 import { IDS } from './fixtures/employees.js';
+import { withFakeQueues } from './fixtures/queue.js';
 
 /**
  * Wiring modul cuti di aplikasi utuh: role per controller, /me memakai ID
@@ -49,7 +50,9 @@ describe('Leave requests (e2e)', () => {
       auditLog: { create: jest.fn(() => Promise.resolve({})) },
       $transaction: (fn: (tx: unknown) => Promise<unknown>) => fn(client),
     };
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+    const moduleRef = await withFakeQueues(
+      Test.createTestingModule({ imports: [AppModule] }),
+    )
       .overrideProvider(PrismaService)
       .useValue({ client })
       .overrideProvider(REDIS_CLIENT)

@@ -8,6 +8,7 @@ import { requestIdMiddleware } from './common/http/request-id.js';
 import { API_PREFIX } from './config/api-prefix.js';
 import type { Env } from './config/env.validation.js';
 import { setupSwagger } from './config/swagger.js';
+import { setupQueueDashboard } from './queue/queue-dashboard.js';
 
 export { API_PREFIX };
 
@@ -30,6 +31,9 @@ export function configureApp(app: NestExpressApplication): void {
     origin: [new URL(config.get('FRONTEND_URL', { infer: true })).origin],
     credentials: true,
   });
+
+  // Bull Board /admin/queues (basic auth), hanya jika ENABLE_QUEUE_DASHBOARD=true.
+  setupQueueDashboard(app);
 
   // /health tetap di root supaya mudah dipakai healthcheck Docker/load balancer.
   app.setGlobalPrefix(API_PREFIX, { exclude: ['health'] });

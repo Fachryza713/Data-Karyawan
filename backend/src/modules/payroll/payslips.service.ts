@@ -1,17 +1,31 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { formatMoney } from '../../common/money/money.js';
-import { PayrollPeriodStatus } from '../../generated/prisma/enums.js';
+import { Clock } from '../../common/time/clock.js';
+import { SlipStatus } from '../../generated/prisma/enums.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { EmployeeMessages } from '../employees/employees.constants.js';
+import { StorageService } from '../storage/storage.service.js';
 import type {
   PayslipResponseDto,
   PayslipSummaryDto,
 } from './dto/payroll-response.dto.js';
-import { PayrollMessages } from './payroll.constants.js';
+import type {
+  PayslipPdfPendingDto,
+  PayslipPdfUrlDto,
+} from './dto/payslip-pdf.dto.js';
+import {
+  PAYSLIP_PDF_URL_TTL_SECONDS,
+  PayrollMessages,
+  payslipFileName,
+} from './payroll.constants.js';
 import { PAYROLL_ITEM_SELECT, toPayslipDto } from './payroll.mapper.js';
+import {
+  PUBLISHED_PERIOD_STATUSES,
+  payslipPdfAvailability,
+} from './payslip-pdf.rules.js';
 
 /** Slip terlihat karyawan hanya setelah FINAL (PRD US-13). */
-const PUBLISHED = [PayrollPeriodStatus.FINAL, PayrollPeriodStatus.PAID];
+const PUBLISHED = [...PUBLISHED_PERIOD_STATUSES];
 
 const PERIOD_FIELDS = {
   id: true,
@@ -28,7 +42,11 @@ const PERIOD_FIELDS = {
  */
 @Injectable()
 export class PayslipsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly storage: StorageService,
+    private readonly clock: Clock,
+  ) {}
 
   async listMine(userId: string): Promise<PayslipSummaryDto[]> {
     const employeeId = await this.employeeIdOf(userId);
@@ -68,6 +86,50 @@ export class PayslipsService {
       throw new NotFoundException(PayrollMessages.payslipNotFound);
     }
     return toPayslipDto(item, item.period);
+  }
+
+  /**
+   * PDF slip saya: READY = presigned URL 5 menit, QUEUED = masih dibuat
+   * worker (controller membalas 202). FAILED/NONE = 409 (payslipPdfAvailability).
+   * Slip DRAFT atau milik orang lain = 404, sama seperti findMine.
+   */
+  async myPdf(
+    userId: string,
+    periodId: string,
+  ): Promise<PayslipPdfUrlDto | PayslipPdfPendingDto> {
+    const employeeId = await this.employeeIdOf(userId);
+    const item = await this.prisma.client.payrollItem.findFirst({
+      where: { employeeId, periodId, period: { status: { in: PUBLISHED } } },
+      select: {
+        nip: true,
+        slipStatus: true,
+        slipKey: true,
+        period: { select: { period: true } },
+      },
+    });
+    if (!item) {
+      throw new NotFoundException(PayrollMessages.payslipNotFound);
+    }
+    const availability = payslipPdfAvailability(item.slipStatus, item.slipKey);
+    if (availability.status === SlipStatus.QUEUED) {
+      return {
+        status: SlipStatus.QUEUED,
+        message: PayrollMessages.slipPdfQueued,
+      };
+    }
+    const expiresAt = new Date(
+      this.clock.now().getTime() + PAYSLIP_PDF_URL_TTL_SECONDS * 1000,
+    );
+    const url = await this.storage.createPresignedDownload(
+      availability.key,
+      PAYSLIP_PDF_URL_TTL_SECONDS,
+      payslipFileName(item.period.period, item.nip),
+    );
+    return {
+      status: SlipStatus.READY,
+      url,
+      expiresAt: expiresAt.toISOString(),
+    };
   }
 
   private async employeeIdOf(userId: string): Promise<string> {

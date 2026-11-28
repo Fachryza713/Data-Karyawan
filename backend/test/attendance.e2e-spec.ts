@@ -10,6 +10,7 @@ import { Prisma } from '../src/generated/prisma/client.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
 import { REDIS_CLIENT } from '../src/redis/redis.module.js';
 import { IDS } from './fixtures/employees.js';
+import { withFakeQueues } from './fixtures/queue.js';
 
 /**
  * Wiring modul absensi di aplikasi utuh: role per controller, ValidationPipe
@@ -44,7 +45,9 @@ describe('Attendance (e2e)', () => {
         count: jest.fn(() => Promise.resolve(0)),
       },
     };
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+    const moduleRef = await withFakeQueues(
+      Test.createTestingModule({ imports: [AppModule] }),
+    )
       .overrideProvider(PrismaService)
       .useValue({ client })
       .overrideProvider(REDIS_CLIENT)

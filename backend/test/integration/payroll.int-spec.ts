@@ -1,3 +1,4 @@
+import { jest } from '@jest/globals';
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import type { AuthUser } from '../../src/common/auth/auth-user.js';
 import { AuditService } from '../../src/modules/audit/audit.service.js';
@@ -6,8 +7,18 @@ import { PayrollConfigService } from '../../src/modules/payroll/payroll-config.s
 import { PayrollItemsService } from '../../src/modules/payroll/payroll-items.service.js';
 import { PayrollPeriodsService } from '../../src/modules/payroll/payroll-periods.service.js';
 import { PayrollRunService } from '../../src/modules/payroll/payroll-run.service.js';
-import { PayrollAuditActions as A } from '../../src/modules/payroll/payroll.constants.js';
+import {
+  PayrollAuditActions as A,
+  payslipObjectKey,
+} from '../../src/modules/payroll/payroll.constants.js';
+import {
+  PayslipPdfQueue,
+  type PayslipQueueClient,
+} from '../../src/modules/payroll/payslip-pdf.queue.js';
+import { PayslipPdfService } from '../../src/modules/payroll/payslip-pdf.service.js';
 import { PayslipsService } from '../../src/modules/payroll/payslips.service.js';
+import type { StorageService } from '../../src/modules/storage/storage.service.js';
+import { FakeQueue } from '../fixtures/queue.js';
 import { IntegrationFixtures } from './fixtures.js';
 
 /**
@@ -19,13 +30,21 @@ describe('Payroll (integration, PostgreSQL asli)', () => {
   const fx = new IntegrationFixtures();
   // Kamis 26 Nov 2026 10:00 WIB: periode paling jauh 2026-12.
   const clock = { now: () => new Date('2026-11-26T03:00:00.000Z') };
-  const PERIODS = ['2026-08', '2026-09', '2026-10'];
+  const PERIODS = ['2026-07', '2026-08', '2026-09', '2026-10'];
+  // Redis dan storage diganti: job dicatat FakeQueue, file tidak disentuh.
+  const queue = new FakeQueue('payslip-pdf');
+  const storage = {
+    delete: jest.fn<StorageService['delete']>().mockResolvedValue(undefined),
+    createPresignedDownload:
+      jest.fn<StorageService['createPresignedDownload']>(),
+  };
 
   let compensation: CompensationService;
   let runs: PayrollRunService;
   let periods: PayrollPeriodsService;
   let items: PayrollItemsService;
   let payslips: PayslipsService;
+  let payslipPdf: PayslipPdfService;
   let hr: AuthUser;
   let alice: { id: string; userId: string };
   let budi: { id: string; userId: string };
@@ -83,9 +102,19 @@ describe('Payroll (integration, PostgreSQL asli)', () => {
     const configs = new PayrollConfigService(fx.prisma, audit, clock);
     compensation = new CompensationService(fx.prisma, audit, clock);
     runs = new PayrollRunService(fx.prisma, audit, configs);
-    periods = new PayrollPeriodsService(fx.prisma, audit, clock);
+    payslipPdf = new PayslipPdfService(
+      fx.prisma,
+      audit,
+      new PayslipPdfQueue(queue as unknown as PayslipQueueClient),
+      storage as unknown as StorageService,
+    );
+    periods = new PayrollPeriodsService(fx.prisma, audit, clock, payslipPdf);
     items = new PayrollItemsService(fx.prisma, audit);
-    payslips = new PayslipsService(fx.prisma);
+    payslips = new PayslipsService(
+      fx.prisma,
+      storage as unknown as StorageService,
+      clock,
+    );
 
     await fx.createOrg();
     hr = { id: await fx.createUser('HR'), role: 'HR', employeeId: null };
@@ -229,6 +258,79 @@ describe('Payroll (integration, PostgreSQL asli)', () => {
     await as(A.periodMarkPaid, () => periods.markPaid(period.id));
     await expect(
       as(A.periodReopen, () => periods.reopen(period.id, 'Coba')),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('PDF slip: finalize -> QUEUED + satu job per slip; reopen -> NONE + PDF lama dihapus', async () => {
+    const period = await createPeriod('2026-07');
+    await run(period.id);
+    await finalize(period.id);
+
+    const queued = await ourItems(period.id);
+    expect(queued).toHaveLength(2);
+    for (const item of queued) {
+      expect(item.slipStatus).toBe('QUEUED');
+      expect(queue.jobs.get(item.id)?.data).toEqual({
+        itemId: item.id,
+        notify: true,
+      });
+    }
+
+    // CHECK payroll_items_slip_ready_check: READY wajib punya slipKey.
+    const [first, second] = queued;
+    await expect(
+      fx.client.payrollItem.update({
+        where: { id: first.id },
+        data: { slipStatus: 'READY' },
+      }),
+    ).rejects.toThrow();
+    // Seperti hasil worker: satu READY, satu FAILED.
+    const firstKey = payslipObjectKey('2026-07', first.employeeId);
+    await fx.client.payrollItem.update({
+      where: { id: first.id },
+      data: { slipStatus: 'READY', slipKey: firstKey },
+    });
+    await fx.client.payrollItem.update({
+      where: { id: second.id },
+      data: { slipStatus: 'FAILED', slipError: 'MinIO timeout' },
+    });
+    const status = await payslipPdf.status(period.id);
+    expect(status.counts.READY).toBeGreaterThanOrEqual(1);
+    expect(status.failed.map((item) => item.itemId)).toContain(second.id);
+
+    // Buat ulang hanya yang FAILED: kembali QUEUED, READY tidak disentuh.
+    queue.finish(second.id, 'failed');
+    await as(A.payslipsRegenerate, () =>
+      payslipPdf.regenerate(period.id, 'FAILED'),
+    );
+    const afterRegenerate = await ourItems(period.id);
+    expect(
+      afterRegenerate.map((item) => [item.id, item.slipStatus, item.slipError]),
+    ).toEqual([
+      [first.id, 'READY', null],
+      [second.id, 'QUEUED', null],
+    ]);
+    expect(queue.jobs.get(second.id)?.state).toBe('waiting');
+
+    await as(A.periodReopen, () => periods.reopen(period.id, 'Koreksi PDF'));
+
+    for (const item of await ourItems(period.id)) {
+      expect([item.slipStatus, item.slipKey, item.slipError]).toEqual([
+        'NONE',
+        null,
+        null,
+      ]);
+    }
+    const deleted = storage.delete.mock.calls.map(([key]) => key);
+    expect(deleted).toEqual(
+      expect.arrayContaining([
+        firstKey,
+        payslipObjectKey('2026-07', second.employeeId),
+      ]),
+    );
+    // Regenerate di periode DRAFT ditolak.
+    await expect(
+      as(A.payslipsRegenerate, () => payslipPdf.regenerate(period.id, 'ALL')),
     ).rejects.toBeInstanceOf(ConflictException);
   });
 

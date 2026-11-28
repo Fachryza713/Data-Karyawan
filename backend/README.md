@@ -15,20 +15,22 @@ docker compose up -d --build
 docker compose exec api npx prisma migrate dev   # terapkan migrasi
 docker compose exec api npm run db:seed          # isi data demo
 docker compose logs -f api
+docker compose logs -f worker                    # PDF slip dan email
 ```
 
-| Service       | Alamat                                          |
-| ------------- | ----------------------------------------------- |
-| Swagger UI    | http://localhost:3000/docs                      |
-| Health check  | http://localhost:3000/health                    |
-| API           | http://localhost:3000/api/v1                    |
-| MinIO console | http://localhost:9001 (minioadmin / minioadmin) |
-| Mailpit       | http://localhost:8025                           |
+| Service       | Alamat                                                                |
+| ------------- | --------------------------------------------------------------------- |
+| Swagger UI    | http://localhost:3000/docs                                            |
+| Health check  | http://localhost:3000/health                                          |
+| API           | http://localhost:3000/api/v1                                          |
+| MinIO console | http://localhost:9001 (minioadmin / minioadmin)                       |
+| Mailpit       | http://localhost:8025                                                 |
+| Bull Board    | http://localhost:3000/admin/queues (admin / dev-only-queue-dashboard) |
 
 Kode di `backend/` di-mount ke container, jadi perubahan file langsung memicu reload. Setelah mengubah `package.json`, bangun ulang image dan volume `node_modules`:
 
 ```bash
-docker compose up -d --build -V api
+docker compose up -d --build -V api worker
 ```
 
 ### Langsung di host
@@ -42,6 +44,7 @@ npm install          # juga menjalankan prisma generate
 npx prisma migrate dev
 npm run db:seed
 npm run start:dev
+npm run start:worker:dev   # terminal kedua: worker BullMQ (PDF slip, email)
 ```
 
 ### Tanpa Docker: database lokal `prisma dev`
@@ -72,20 +75,22 @@ Konfigurasi environment tidak valid (2 masalah):
 
 ## Script
 
-| Perintah                               | Fungsi                                                  |
-| -------------------------------------- | ------------------------------------------------------- |
-| `npm run start:dev`                    | Jalankan dengan hot reload                              |
-| `npm run build`                        | Compile ke `dist/`                                      |
-| `npm run lint`                         | ESLint + cek format Prettier                            |
-| `npm run lint:fix`                     | Perbaiki lint dan format                                |
-| `npm test`                             | Unit test (`src/**/*.spec.ts`)                          |
-| `npm run test:e2e`                     | Test e2e (`test/`), dependensi di-mock, tanpa Docker    |
-| `npm run test:int`                     | Integration test dengan PostgreSQL asli (cuti, payroll) |
-| `npm run test:cov`                     | Unit test + coverage                                    |
-| `npx prisma migrate dev --name <nama>` | Buat dan terapkan migrasi baru                          |
-| `npm run db:seed`                      | Isi data demo (idempoten, aman dijalankan ulang)        |
-| `npm run erd`                          | Gambar ulang ERD ke `../docs/erd.svg`                   |
-| `npm run prisma:studio`                | Lihat isi database                                      |
+| Perintah                               | Fungsi                                                    |
+| -------------------------------------- | --------------------------------------------------------- |
+| `npm run start:dev`                    | Jalankan dengan hot reload                                |
+| `npm run start:worker:dev`             | Jalankan worker BullMQ dengan hot reload (`dist-worker/`) |
+| `npm run start:worker:prod`            | Jalankan worker hasil build (`node dist/worker.js`)       |
+| `npm run build`                        | Compile ke `dist/`                                        |
+| `npm run lint`                         | ESLint + cek format Prettier                              |
+| `npm run lint:fix`                     | Perbaiki lint dan format                                  |
+| `npm test`                             | Unit test (`src/**/*.spec.ts`)                            |
+| `npm run test:e2e`                     | Test e2e (`test/`), dependensi di-mock, tanpa Docker      |
+| `npm run test:int`                     | Integration test dengan PostgreSQL asli (cuti, payroll)   |
+| `npm run test:cov`                     | Unit test + coverage                                      |
+| `npx prisma migrate dev --name <nama>` | Buat dan terapkan migrasi baru                            |
+| `npm run db:seed`                      | Isi data demo (idempoten, aman dijalankan ulang)          |
+| `npm run erd`                          | Gambar ulang ERD ke `../docs/erd.svg`                     |
+| `npm run prisma:studio`                | Lihat isi database                                        |
 
 ## Struktur
 
@@ -99,7 +104,8 @@ backend/
 ├── prisma.config.ts            konfigurasi Prisma CLI (DATABASE_URL, seed)
 ├── scripts/generate-erd.ts     schema.prisma -> ../docs/erd.svg
 ├── src/
-│   ├── main.ts                 bootstrap
+│   ├── main.ts                 bootstrap API (HTTP)
+│   ├── worker.ts               bootstrap worker BullMQ (tanpa HTTP), modul di worker.module.ts
 │   ├── app.module.ts           modul root
 │   ├── app.setup.ts            konfigurasi global (dipakai main.ts dan test e2e)
 │   ├── config/                 validasi env (zod), logger, Swagger
@@ -115,6 +121,7 @@ backend/
 │   │   └── interceptors/
 │   ├── prisma/                 PrismaModule global, PrismaService, extension soft delete
 │   ├── redis/                  klien Redis global
+│   ├── queue/                  BullMQ (QueueModule global), Bull Board /admin/queues
 │   ├── modules/                modul fitur: auth, audit, mail, storage, employees, organization, health
 │   └── generated/prisma/       hasil prisma generate (tidak di-commit)
 └── test/                       test e2e dan fixtures/ (data mock bersama unit test)
@@ -348,6 +355,9 @@ TEST_DATABASE_URL=postgresql://hris:hris@localhost:5433/hris_test npm run test:i
 | `POST payroll-periods/:id/finalize` / `mark-paid` / `reopen`     | HR           | DRAFT -> FINAL -> PAID; FINAL -> DRAFT dengan `reason`          |
 | `GET payroll-periods/:id/employer-contributions`                 | HR           | Rekap iuran bagian perusahaan per program dan per karyawan      |
 | `GET payslips/me`, `GET payslips/me/:periodId`                   | EMPLOYEE, HR | Slip sendiri, hanya periode FINAL/PAID                          |
+| `GET payslips/me/:periodId/pdf`                                  | EMPLOYEE, HR | Link PDF slip sendiri: 200 `{ url }` (5 menit) / 202 / 409      |
+| `POST payroll-periods/:id/payslips/regenerate`                   | HR           | Buat ulang PDF slip FAILED (default) atau semua (`scope: ALL`)  |
+| `GET payroll-periods/:id/payslips/status`                        | HR           | Jumlah slip per `slipStatus` + daftar slip FAILED               |
 | `GET benefits/me`                                                | EMPLOYEE, HR | BPJS dan asuransi sendiri                                       |
 
 **Uang** selalu `Prisma.Decimal` (kolom `Decimal(15,2)`, tarif `Decimal(7,4)` sebagai pecahan, `0.0100` = 1%). Di API uang dan tarif berupa teks (`"8500000.00"`); angka JSON ditolak 400 karena dibaca JavaScript sebagai float.
@@ -362,10 +372,23 @@ TEST_DATABASE_URL=postgresql://hris:hris@localhost:5433/hris_test npm run test:i
 
 Semua perubahan gaji, manfaat, tarif, slip, dan status periode dicatat di AuditLog (before/after). Integration test payroll: run paralel di periode kosong (diulang 5 putaran) dan berurutan menghasilkan jumlah slip dan total yang sama, isian HR bertahan, snapshot setelah kenaikan gaji, serta karyawan tidak bisa membaca slip DRAFT atau milik orang lain.
 
+### PDF slip (asynchronous)
+
+PDF dibuat proses worker terpisah (`src/worker.ts`, service `worker` di docker-compose dengan image yang sama), bukan oleh request API.
+
+1. **Finalize**: di transaksi yang sama semua slip menjadi `slipStatus = QUEUED`; setelah commit satu job per slip masuk queue `payslip-pdf` dengan `jobId = itemId`. Selama job slip itu masih menunggu/berjalan, BullMQ mengabaikan add dengan id yang sama, jadi finalize atau regenerate yang terpanggil dua kali tidak membuat job ganda. Request finalize tidak menunggu PDF. Jika Redis tidak merespons (5 detik), finalize tetap selesai dan slip ditandai `FAILED` supaya bisa dibuat ulang.
+2. **Worker** (`PayslipPdfProcessor`): baca snapshot `PayrollItem`, render PDF (pdfkit: kop Blue Rose Tech, periode, nama, NIP, divisi, jabatan, penerimaan, potongan, take home pay, rekening 4 digit terakhir), upload ke `payslips/<period>/<employeeId>.pdf`, lalu `QUEUED -> READY` dengan syarat `updatedAt` belum berubah. Job lama untuk slip yang sudah tidak QUEUED atau periodenya dibuka kembali dilewati.
+3. **Retry**: percobaan pertama + 3 retry, backoff eksponensial 5 s, 10 s, 20 s. Di percobaan terakhir slip menjadi `FAILED` + `slipError`.
+4. **Email**: setelah READY, email "Slip gaji <bulan> sudah terbit" masuk queue `mail` (dikirim worker, 5 percobaan). Isinya link ke `FRONTEND_URL/app/gaji`, tanpa lampiran. Regenerate slip yang sudah pernah READY tidak mengirim email lagi.
+5. **Karyawan**: `GET payslips/me/:periodId/pdf` = 200 `{ url, expiresAt }` (presigned 5 menit) jika READY, 202 + `Retry-After` jika QUEUED, 409 jika FAILED/NONE (perlu HR), 404 jika periode DRAFT atau bukan slip sendiri.
+6. **Reopen**: status slip kembali `NONE` di transaksi reopen, PDF lama dihapus dari storage setelah commit.
+
+Bull Board (`/admin/queues`, di luar `/api/v1`) hanya aktif jika `ENABLE_QUEUE_DASHBOARD=true`, dilindungi basic auth `QUEUE_DASHBOARD_USER`/`QUEUE_DASHBOARD_PASSWORD` (minimal 12 karakter).
+
 ## Image produksi
 
 ```bash
 docker build --target prod -t hris-api backend
 ```
 
-Image `prod` hanya berisi `dist/` dan dependency produksi, jalan sebagai user `node`. Image ini tidak menyertakan Prisma CLI, jadi migrasi dijalankan terpisah (`npm run prisma:deploy` dari CI atau container `dev`).
+Image `prod` hanya berisi `dist/` dan dependency produksi, jalan sebagai user `node`. Worker memakai image yang sama dengan command `node dist/worker.js`. Image ini tidak menyertakan Prisma CLI, jadi migrasi dijalankan terpisah (`npm run prisma:deploy` dari CI atau container `dev`).
