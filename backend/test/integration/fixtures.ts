@@ -104,6 +104,8 @@ export class IntegrationFixtures {
       where: { actorId: { in: this.userIds } },
     });
     await extra?.(this.client);
+    // Skor ikut terhapus (cascade).
+    await this.client.kpiReview.deleteMany({ where: { employeeId } });
     await this.client.payrollItem.deleteMany({ where: { employeeId } });
     await this.client.salaryStructure.deleteMany({ where: { employeeId } });
     await this.client.benefit.deleteMany({ where: { employeeId } });

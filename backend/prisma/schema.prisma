@@ -17,7 +17,7 @@ generator client {
   provider        = "prisma-client"
   output          = "../src/generated/prisma"
   moduleFormat    = "esm"
-  previewFeatures = ["postgresqlExtensions"]
+  previewFeatures = ["postgresqlExtensions", "partialIndexes"]
 }
 
 datasource db {
@@ -97,6 +97,7 @@ model User {
   passwordResetTokens   PasswordResetToken[]
   reviewedLeaveRequests LeaveRequest[]
   finalizedPayrolls     PayrollPeriod[]
+  kpiReviewsGiven       KpiReview[]
 
   @@map("users")
 }
@@ -135,6 +136,7 @@ model Employee {
   salaries       SalaryStructure[]
   benefits       Benefit[]
   payrollItems   PayrollItem[]
+  kpiReviews     KpiReview[]
 
   // Filter daftar karyawan per departemen (selalu bersama deleted_at IS NULL).
   @@index([departmentId, deletedAt])
@@ -208,8 +210,9 @@ model Department {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  positions Position[]
-  employees Employee[]
+  positions  Position[]
+  employees  Employee[]
+  kpiReviews KpiReview[]
 
   @@map("departments")
 }
@@ -222,8 +225,10 @@ model Position {
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  department Department @relation(fields: [departmentId], references: [id], onDelete: Restrict)
-  employees  Employee[]
+  department   Department    @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  employees    Employee[]
+  kpiTemplates KpiTemplate[]
+  kpiReviews   KpiReview[]
 
   // Kolom pertama index unik ini juga melayani foreign key department_id.
   @@unique([departmentId, name])
@@ -583,6 +588,157 @@ model PayrollItem {
   // Slip milik karyawan (/payslips/me).
   @@index([employeeId])
   @@map("payroll_items")
+}
+
+// ---------------------------------------------------------------------------
+// KPI (hanya HR; karyawan tidak punya akses sama sekali, PRD 6.5)
+// ---------------------------------------------------------------------------
+
+/// DRAFT -> ACTIVE (penilaian dibuat) -> CLOSED. Hanya satu periode ACTIVE.
+enum KpiPeriodStatus {
+  DRAFT
+  ACTIVE
+  CLOSED
+
+  @@map("kpi_period_status")
+}
+
+/// DRAFT: skor bisa diisi. FINAL: skor dan nilai akhir terkunci.
+enum KpiReviewStatus {
+  DRAFT
+  FINAL
+
+  @@map("kpi_review_status")
+}
+
+/// A 85-100, B 70-84, C 55-69, D di bawah 55 (dari nilai akhir 1 desimal).
+enum KpiGrade {
+  A
+  B
+  C
+  D
+
+  @@map("kpi_grade")
+}
+
+/// Template KPI per jabatan. Satu template aktif per jabatan; template valid
+/// jika punya indikator dan total bobotnya tepat 100.
+model KpiTemplate {
+  id         String   @id @default(uuid(7)) @db.Uuid
+  positionId String   @map("position_id") @db.Uuid
+  name       String
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  position   Position       @relation(fields: [positionId], references: [id], onDelete: Cascade)
+  indicators KpiIndicator[]
+  reviews    KpiReview[]
+
+  @@unique([positionId], map: "kpi_templates_one_active_per_position", where: raw("is_active"))
+  @@index([positionId])
+  @@map("kpi_templates")
+}
+
+/// Indikator template. Bobot dalam persen (Decimal 5,2), total satu template = 100.
+model KpiIndicator {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  templateId  String   @map("template_id") @db.Uuid
+  name        String
+  description String?
+  weight      Decimal  @db.Decimal(5, 2)
+  target      String?
+  order       Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  template KpiTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@index([templateId, order])
+  @@map("kpi_indicators")
+}
+
+/// Periode penilaian, contoh "Q1 2026". Tenggat pengisian diatur HR.
+model KpiPeriod {
+  id          String          @id @default(uuid(7)) @db.Uuid
+  name        String          @unique
+  startDate   DateTime        @map("start_date") @db.Date
+  endDate     DateTime        @map("end_date") @db.Date
+  deadline    DateTime        @db.Date
+  status      KpiPeriodStatus @default(DRAFT)
+  activatedAt DateTime?       @map("activated_at") @db.Timestamptz(3)
+  closedAt    DateTime?       @map("closed_at") @db.Timestamptz(3)
+  createdAt   DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  reviews KpiReview[]
+
+  @@unique([status], map: "kpi_periods_one_active", where: raw("status = 'ACTIVE'"))
+  @@map("kpi_periods")
+}
+
+/// Penilaian satu karyawan di satu periode, dibuat saat periode diaktifkan.
+/// Jabatan, departemen, dan template adalah snapshot saat aktivasi;
+/// indikator dan bobotnya disalin ke KpiScore.
+model KpiReview {
+  id           String          @id @default(uuid(7)) @db.Uuid
+  periodId     String          @map("period_id") @db.Uuid
+  employeeId   String          @map("employee_id") @db.Uuid
+  /// HR terakhir yang menyimpan skor atau memfinalkan. Null = belum dinilai.
+  reviewerId   String?         @map("reviewer_id") @db.Uuid
+  positionId   String?         @map("position_id") @db.Uuid
+  departmentId String?         @map("department_id") @db.Uuid
+  templateId   String?         @map("template_id") @db.Uuid
+  /// Jumlah(skor x bobot / 100), dibulatkan 1 desimal saat finalisasi.
+  finalScore   Decimal?        @map("final_score") @db.Decimal(5, 2)
+  grade        KpiGrade?
+  note         String?
+  status       KpiReviewStatus @default(DRAFT)
+  finalizedAt  DateTime?       @map("finalized_at") @db.Timestamptz(3)
+  createdAt    DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  period     KpiPeriod    @relation(fields: [periodId], references: [id], onDelete: Restrict)
+  employee   Employee     @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  reviewer   User?        @relation(fields: [reviewerId], references: [id], onDelete: Restrict)
+  position   Position?    @relation(fields: [positionId], references: [id], onDelete: SetNull)
+  department Department?  @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  template   KpiTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  scores     KpiScore[]
+
+  // Satu penilaian per karyawan per periode; kolom pertama melayani FK period_id.
+  @@unique([periodId, employeeId])
+  @@index([employeeId])
+  @@index([reviewerId])
+  @@index([positionId])
+  @@index([departmentId])
+  @@index([templateId])
+  @@map("kpi_reviews")
+}
+
+/// Skor satu indikator di satu penilaian. Nama, deskripsi, bobot, target,
+/// dan urutan adalah snapshot indikator saat periode diaktifkan, jadi
+/// perubahan template tidak mengubah penilaian. indicatorId sengaja bukan
+/// foreign key: indikator template boleh diubah atau dihapus kemudian.
+model KpiScore {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  reviewId    String   @map("review_id") @db.Uuid
+  indicatorId String   @map("indicator_id") @db.Uuid
+  name        String
+  description String?
+  weight      Decimal  @db.Decimal(5, 2)
+  target      String?
+  order       Int      @map("sort_order")
+  /// 0-100, maksimal 2 desimal. Null = belum diisi.
+  score       Decimal? @db.Decimal(5, 2)
+  note        String?
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  review KpiReview @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+
+  @@unique([reviewId, indicatorId])
+  @@map("kpi_scores")
 }
 
 // ---------------------------------------------------------------------------
